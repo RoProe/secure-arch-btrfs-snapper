@@ -455,7 +455,8 @@ else
   ENROLL_CMD=""
 fi
 
-echo "$PKGS_AUR" | tr ' ' '\n' | grep -v '^$' > /mnt/root/aur-packages.txt
+echo "$PKGS_AUR" | tr ' ' '\n' | grep -v '^$' > /home/${USERNAME}/aur-packages.txt
+chown ${USERNAME}:${USERNAME} /home/${USERNAME}/aur-packages.txt
 
 info "Writing chroot setup script..."
 cat > /mnt/root/chroot-setup.sh << CHROOT_EOF
@@ -564,11 +565,8 @@ mkdir -p /usr/local/bin /etc/pacman.d/hooks
 cat > /usr/local/bin/dracut-install.sh << 'EOF'
 #!/usr/bin/env bash
 mkdir -p /boot/efi/EFI/Linux
-for kver in /usr/lib/modules/*; do
-  kver="$(basename "$kver")"
-  dracut --force --uefi --kver "$kver" "/boot/efi/EFI/Linux/bootx64-${kver}.efi"
-done
-done
+kver="$(ls -1 /usr/lib/modules | sort -V | tail -n1)"
+dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
 EOF
 
 cat > /usr/local/bin/dracut-remove.sh << 'EOF'
@@ -882,7 +880,7 @@ git clone https://aur.archlinux.org/yay.git
 cd yay && makepkg -si --noconfirm
 cd ~
 
-AUR_LIST=/root/aur-packages.txt
+AUR_LIST="$HOME/aur-packages.txt"
 if [[ -f "\$AUR_LIST" && -s "\$AUR_LIST" ]]; then
     mapfile -t AUR_PKGS < "\$AUR_LIST"
     info "Installing AUR packages: \${AUR_PKGS[*]}"
