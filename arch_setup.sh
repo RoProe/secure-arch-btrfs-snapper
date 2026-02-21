@@ -564,12 +564,10 @@ mkdir -p /usr/local/bin /etc/pacman.d/hooks
 cat > /usr/local/bin/dracut-install.sh << 'EOF'
 #!/usr/bin/env bash
 mkdir -p /boot/efi/EFI/Linux
-while read -r line; do
-    if [[ "$line" == usr/lib/modules/*/pkgbase ]]; then
-        kver="${line#usr/lib/modules/}"
-        kver="${kver%/pkgbase}"
-        dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
-    fi
+for kver in /usr/lib/modules/*; do
+  kver="$(basename "$kver")"
+  dracut --force --uefi --kver "$kver" "/boot/efi/EFI/Linux/bootx64-${kver}.efi"
+done
 done
 EOF
 
