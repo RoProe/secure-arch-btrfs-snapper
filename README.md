@@ -181,9 +181,9 @@ systemd-boot is a minimal EFI boot manager - it reads the `entries/` directory a
 
 ### Snapper + snap-pac
 
-`snap-pac` hooks into pacman and creates a **pre** and **post** snapshot around every transaction automatically. You never have to think about it. Every `pacman -Syu` is bookended by snapshots, accessible from the boot menu on the next start.
+`snap-pac` hooks into pacman and creates a **pre** and **post** snapshot around every transaction automatically. No need to think about it. Every `pacman -Syu` is enclosed by snapshots, accessible from the boot menu on the next start.
 
-**Snapper quirk:** When you run `snapper create-config`, Snapper creates its own `.snapshots` subvolume. Since we already have `@snapshots` mounted at `/.snapshots`, this conflicts. The script deletes Snapper's auto-created subvolume and keeps the pre-existing mount. fstab handles it correctly after reboot.
+**Snapper quirk:** When you run `snapper create-config`, Snapper creates its own `.snapshots` subvolume. Since we already have `@snapshots` mounted at `/.snapshots`, this conflicts. The script deletes Snapper's auto-created subvolume and keeps the pre-existing mount. fstab should handle it correctly after reboot.
 
 ### GPU drivers
 
@@ -199,7 +199,7 @@ Auto-detected via `lspci`, confirmed in the TUI:
 
 For Nvidia, the script also appends `nvidia_drm.modeset=1 nvidia_drm.fbdev=1` to the kernel command line and adds the Nvidia modules to the initramfs via dracut. A separate pacman hook rebuilds the UKI whenever `nvidia-dkms` updates.
 
-You still need to add Nvidia env vars to your Hyprland config manually:
+You still need to add Nvidia env vars to your Hyprland config manually (I'm thinking about adding it automatically with a warning that you should remember it when you add your own dotfiles...):
 
 ```bash
 # ~/.config/hypr/envs.conf
@@ -213,11 +213,11 @@ env = AQ_DRM_DEVICES,/dev/dri/card1
 
 ### SecureBoot with sbctl
 
-sbctl generates Platform Key, Key Exchange Key, and Database Key. Your UKI is signed with the Database Key. dracut is configured to re-sign the UKI automatically on every rebuild. A pacman hook re-signs after kernel updates. Key enrollment happens after first boot via BIOS Setup Mode - the script sets everything up but cannot enroll keys without physical BIOS access.
+sbctl generates Platform Key, Key Exchange Key, and Database Key. UKI is signed with the Database Key. dracut is configured to re-sign the UKI automatically on every rebuild. A pacman hook re-signs after kernel updates. Key enrollment happens after first boot via BIOS Setup Mode - the script sets everything up but cannot enroll keys without physical BIOS access.
 
 ### Autologin
 
-Configured via a systemd drop-in for `getty@tty1.service`. The disk is still fully encrypted - autologin only skips the Linux user password prompt after LUKS is unlocked. Practical for a home desktop; optional on a laptop that travels.
+Configured via a systemd drop-in for `getty@tty1.service`. The disk is still fully encrypted - autologin only skips the Linux user password prompt after LUKS is unlocked. Practical for a home desktop or laptop that travels seldomly. Remember that you shouldn't let root autologin.
 
 ---
 
