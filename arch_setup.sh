@@ -39,7 +39,7 @@ command -v dialog &>/dev/null || pacman -Sy --noconfirm dialog
 
 clear
 dialog --title "Arch Linux Installer" --msgbox \
-"LUKS2 + Btrfs + systemd-boot + Snapshot Menu + SecureBoot\n\nBased on: github.com/Ataraxxia/secure-arch\n\nBoot flow after install:\n  UEFI → systemd-boot → LUKS passphrase\n  → snapshot menu (5s timeout) → boot\n\nPress OK to begin." 14 62
+"LUKS2 + Btrfs + systemd-boot + Snapshot Menu + SecureBoot\n\nBoot flow after install:\n  UEFI → systemd-boot → LUKS passphrase\n  → snapshot menu (5s timeout) → boot\n\nPress OK to begin." 14 62
 
 # ── disk ──────────────────────────────────────────────────────────────────────
 DISK_ENTRIES=()
