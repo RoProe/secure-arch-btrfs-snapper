@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Arch Linux installer — LUKS2 + Btrfs + Dracut UKI + systemd-boot + SecureBoot
-# Based on: https://github.com/Ataraxxia/secure-arch (Btrfs adaptation)
+# Based on: https://github.com/Ataraxxia/secure-arch (Btrfs adaptation with snapshots and custom snapshot menu after luks decryption and swap on LUKS partition for secure hibernate.)
 #
 # Boot flow:
 #   UEFI → systemd-boot (instant) → UKI → LUKS passphrase
@@ -12,6 +12,8 @@
 #   1. Boot Arch Linux ISO
 #   2. Connect to internet (iwctl)
 #   3. Run: bash install.sh
+#   4. Install procedure eith TUI and preconfigured settings awaiting user confirmation or change
+#   5. Post install run the post-install script for some configurations and app installs  etc.
 #
 # WHAT THIS SCRIPT DOES NOT DO:
 #   - SecureBoot key enrollment (requires BIOS interaction — done after first boot)
