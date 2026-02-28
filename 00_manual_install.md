@@ -2,7 +2,7 @@
 
 Fully encrypted Arch Linux: LUKS2 + Btrfs + Dracut UKI + systemd-boot + post-LUKS snapshot menu + SecureBoot.
 
-This Guide is heavily based on [secure-arch](https://github.com/Ataraxxia/secure-arch) by Ataraxxia.
+This Guide is heavily influenced by [secure-arch](https://github.com/Ataraxxia/secure-arch) by Ataraxxia.
 
 ---
 
@@ -16,10 +16,10 @@ UEFI → systemd-boot (instant) → UKI loads → LUKS passphrase
 ```
 
 **Why systemd-boot instead of GRUB?**
-GRUB runs *before* LUKS and must decrypt the partition itself — which forces you to use PBKDF2 as the key derivation function instead of Argon2id (the LUKS2 secure default). systemd-boot is a pure EFI launcher that immediately hands off to the UKI. The snapshot menu runs inside the initramfs *after* LUKS is already open, so you keep full Argon2id security with no compromises and no double password prompt.
+GRUB runs *before* LUKS and must decrypt the partition itself — which forces you to use PBKDF2 as the key derivation function instead of Argon2id. systemd-boot is a pure EFI launcher that immediately hands off to the UKI. The snapshot menu runs inside the initramfs *after* LUKS is already open, so you keep full Argon2id security.
 
 **Why btrfs instead of ext4?**
-- Allows us easy use of snapshots and Rollbacks
+- Allows easy use of snapshots and Rollbacks
 - We now use Subvolumes instead of Logical Subvolumes
 - Less layers and less complex
 ---
@@ -32,7 +32,7 @@ GRUB runs *before* LUKS and must decrypt the partition itself — which forces y
 
 ---
 
-## Preparing USB and booting the installer
+## Preparing USB and booting the installer 
 
 ```bash
 sudo dd if=/path/to/archlinux.iso of=/dev/sdX status=progress
@@ -40,7 +40,7 @@ sync
 ```
 
 
-Formating beforehand is redundant since it will be overwritten anyways. The Arch iso is a hybrid image and should be written raw.
+Formating the Install USB Stick beforehand is redundant since it will be overwritten anyways. The Arch iso is a hybrid image and should be written raw.
 
 **Disable SecureBoot in BIOS**, boot the USB. Connect to WiFi (if needed):
 
