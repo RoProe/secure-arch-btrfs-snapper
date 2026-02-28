@@ -1,0 +1,7 @@
+#Adjust the data and rename the file to .imap 
+#You can find out the names of your Inboxes via the givmailboxes.sh
+
+export IMAP_SERVER="imap.yourprovider.tld"
+export IMAP_USER="your@mail.tld"
+export IMAP_PASS=$(secret-tool lookup service thunderbird username YOURUSERNAME)
+export MAILBOXES="YOURMAILBOX1, YOURMAILBOX2"

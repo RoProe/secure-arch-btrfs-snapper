@@ -5,7 +5,7 @@ It has not been extensively tested yet.
 Use at your own risk and test in a VM before deploying on real hardware.
 Personal Arch Linux installation setup - LUKS2 full-disk encryption, Btrfs with automatic snapshots, post-LUKS snapshot menu, hibernate via encrypted swapfile, systemd-boot + Unified Kernel Image, optional SecureBoot.
 
-Based on [secure-arch](https://github.com/Ataraxxia/secure-arch) by Ataraxxia.
+Inspired by [secure-arch](https://github.com/Ataraxxia/secure-arch) by Ataraxxia.
 
 
 
@@ -127,6 +127,9 @@ bash ~/post-install.sh
 
 ```bash
 cd ~/dotfiles && stow *
+
+> **Note:** The dotfiles include a `.p10k.zsh` config. If you prefer to generate
+> your own prompt style, delete it and run `p10k configure` after the first login.
 
 # NM VPN configs from Borg backup
 sudo cp /path/to/restored/*.nmconnection /etc/NetworkManager/system-connections/

@@ -1,0 +1,59 @@
+# ============= SECRETS =============
+**/.ssh/
+**/.gnupg/
+**/.aws/
+**/.kube/config
+**/secrets/
+**/credentials
+**/*_rsa
+**/*_rsa.pub
+**/*.pem
+**/*.key
+**/.env
+
+# ============= HISTORY & PRIVACY =============
+**/*history
+**/.histfile
+**/.lesshst
+**/.viminfo
+**/.recently-used
+**/.bash_sessions/
+
+# ============= CACHE & GENERATED FILES =============
+**/.cache/
+**/*.zwc
+**/.zcompdump*
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.DS_Store
+**/Thumbs.db
+**/*.back
+**/backup/
+
+# ============= RUNTIME & TEMP =============
+**/*.log
+**/*.tmp
+**/*.swp
+**/*.swo
+**/*~
+**/.*.swp
+
+# ============= PACKAGE MANAGERS =============
+**/.oh-my-zsh/
+**/.zinit/
+**/.antigen/
+
+# ============= BACKUP FILES =============
+**/*.backup
+**/*.bak
+**/*.old
+**/*.pre-oh-my-zsh
+
+# ============= APPLICATION SPECIFIC =============
+**/.imap
+**/.mozilla/
+**/.thunderbird/
+**/.local/share/
+**/wireguard

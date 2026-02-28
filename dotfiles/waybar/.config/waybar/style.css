@@ -1,0 +1,237 @@
+@import "theme.css";
+
+* {
+    font-family: "JetBrainsMono Nerd Font", "Symbols Nerd Font", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    min-height: 0;
+}
+
+window#waybar {
+    background: transparent;
+    color: @fg-primary;
+}
+
+/* Module groups with modern spacing */
+.modules-left,
+.modules-center,
+.modules-right {
+    margin: 4px 8px;
+}
+
+.modules-left > * {
+    margin: 0 2px;
+}
+
+.modules-center > * {
+    margin: 0 4px;
+}
+
+.modules-right > * {
+    margin: 0 2px;
+}
+
+/* Base module styling - rounded with backdrop blur effect */
+#workspaces,
+#taskbar,
+#submap,
+#custom-media,
+#clock,
+#custom-mail,
+#custom-weather,
+#pulseaudio,
+#network,
+#power-profiles-daemon,
+#battery,
+#custom-system-info,
+#custom-power,
+#tray {
+    background: @bg-primary;
+    padding: 4px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Workspaces */
+#workspaces {
+    padding: 2px 6px;
+}
+
+#workspaces button {
+    padding: 4px 8px;
+    margin: 0 2px;
+    border-radius: 8px;
+    background: transparent;
+    color: @fg-secondary;
+    transition: all 0.3s ease;
+}
+
+#workspaces button:hover {
+    background: @bg-secondary;
+    color: @fg-primary;
+}
+
+#workspaces button.active {
+    background: @blue;
+    color: @base01;
+}
+
+#workspaces button.urgent {
+    background: @critical;
+    color: @base01;
+    animation: urgent-blink 1s ease infinite alternate;
+}
+
+@keyframes urgent-blink {
+    to { opacity: 0.7; }
+}
+
+/* Taskbar */
+#taskbar {
+    padding: 2px 4px;
+}
+
+#taskbar button {
+    padding: 4px 8px;
+    margin: 0 2px;
+    border-radius: 8px;
+    background: transparent;
+    color: @fg-secondary;
+    transition: all 0.3s ease;
+}
+
+#taskbar button:hover {
+    background: @bg-secondary;
+}
+
+#taskbar button.active {
+    background: @bg-secondary;
+    color: @blue;
+}
+
+/* Clock - centered and prominent */
+#clock {
+    background: @bg-secondary;
+    color: @blue;
+    font-weight: 600;
+    padding: 6px 16px;
+    border: 1px solid rgba(137, 180, 250, 0.2);
+}
+
+/* Custom modules */
+#custom-media {
+    color: @purple;
+    min-width: 250px;
+    padding: 6px 12px;
+}
+
+#custom-mail {
+    color: @yellow;
+}
+
+#custom-weather {
+    color: @cyan;
+}
+
+#custom-system-info {
+    color: @green;
+}
+
+#custom-power {
+    background: @bg-secondary;
+    color: @red;
+    padding: 6px 12px;
+    margin-right: 0;
+}
+
+#custom-power:hover {
+    background: @critical;
+    color: @base01;
+}
+
+/* Audio */
+#pulseaudio {
+    color: @blue;
+}
+
+#pulseaudio.muted {
+    color: @base04;
+}
+
+/* Network */
+#network {
+    color: @cyan;
+}
+
+#network.disconnected {
+    color: @critical;
+}
+
+/* Battery with dynamic colors */
+#battery {
+    color: @green;
+}
+
+#battery.charging {
+    color: @yellow;
+}
+
+#battery.warning:not(.charging) {
+    color: @orange;
+}
+
+#battery.critical:not(.charging) {
+    color: @critical;
+    animation: critical-blink 1s ease infinite;
+}
+
+@keyframes critical-blink {
+    50% { opacity: 0.5; }
+}
+
+/* Power profiles */
+#power-profiles-daemon {
+    color: @purple;
+}
+
+#power-profiles-daemon.performance {
+    color: @red;
+}
+
+#power-profiles-daemon.power-saver {
+    color: @green;
+}
+
+/* Tray */
+#tray {
+    padding: 4px 8px;
+}
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+    background-color: @critical;
+    border-radius: 8px;
+}
+
+/* Tooltips */
+tooltip {
+    background: @bg-primary;
+    border: 1px solid @bg-secondary;
+    border-radius: 12px;
+    padding: 8px 12px;
+}
+
+tooltip label {
+    color: @fg-primary;
+}
+
+/* Drawer animation for tray */
+#custom-expand-icon {
+    padding: 4px 8px;
+    transition: transform 0.3s ease;
+}
+

@@ -1,0 +1,66 @@
+@import "colors.rasi"
+
+* {
+    background-color: transparent;
+    text-color: @foreground;
+    font: @font-medium;
+}
+
+window {
+    transparency: "real";
+    location: east;
+    anchor: east;
+    width: 15%;
+    height: 80%;
+    background-color: transparent;
+}
+
+mainbox {
+    spacing: 0;
+    children: [listview];
+    background-color: transparent;
+}
+
+listview {
+    layout: vertical;
+    spacing: 20px;
+    cycle: true;
+    dynamic: true;
+    scrollbar: false;
+    background-color: transparent;
+    fixed-height: false;
+}
+
+element {
+    orientation: horizontal;
+    padding: 22px;
+    border: 2px;
+    border-color: @border-dark;
+    border-radius: 10px;
+    background-color: @background-main;
+    text-color: @foreground;
+    spacing: 10px;
+    children: [element-text, element-icon];
+    width: 180px;
+}
+
+element selected {
+    background-color: @blue-highlight;
+    border: 2px;
+    border-color: @blue;
+}
+
+element-icon {
+    size: 40px;
+    horizontal-align: 0.5;
+    background-color: transparent;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    background-color: transparent;
+    text-color: inherit;
+    expand: true;
+    width: 100%;
+}

@@ -1,0 +1,30 @@
+/* Modern Dark Theme - Catppuccin Mocha inspired */
+@define-color base00 #1e1e2e;  /* Background */
+@define-color base01 #181825;  /* Darker background */
+@define-color base02 #313244;  /* Selection background */
+@define-color base03 #45475a;  /* Comments, invisibles */
+@define-color base04 #585b70;  /* Dark foreground */
+@define-color base05 #cdd6f4;  /* Default foreground */
+@define-color base06 #f5e0dc;  /* Light foreground */
+@define-color base07 #b4befe;  /* Lightest foreground */
+
+/* Accent colors */
+@define-color red     #f38ba8;
+@define-color orange  #fab387;
+@define-color yellow  #f9e2af;
+@define-color green   #a6e3a1;
+@define-color cyan    #94e2d5;
+@define-color blue    #89b4fa;
+@define-color purple  #cba6f7;
+@define-color pink    #f5c2e7;
+
+/* Functional colors */
+@define-color bg-primary    rgba(30, 30, 46, 0.85);
+@define-color bg-secondary  rgba(49, 50, 68, 0.85);
+@define-color fg-primary    #cdd6f4;
+@define-color fg-secondary  #bac2de;
+
+@define-color critical  @red;
+@define-color warning   @yellow;
+@define-color success   @green;
+@define-color info      @blue;

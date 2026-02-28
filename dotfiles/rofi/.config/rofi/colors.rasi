@@ -1,0 +1,61 @@
+/**
+ * colors.rasi - Shared color scheme for all Rofi themes
+ */
+
+* {
+    /* Primary colors */
+    foreground: #ffeedd;
+    background-main: rgba(28, 28, 28, 0.85);
+    background-light: rgba(0, 0, 0, 0.8);
+    background-transparent: rgba(0, 0, 0, 0);
+    dark: #1c1c1c;
+    
+    /* Black variants */
+    black: #3d352a;
+    lightblack: #554444;
+    tlightblack: #554444cc;
+    
+    /* Red variants */
+    red: #cd5c5c;
+    lightred: #cc5533;
+    
+    /* Green variants */
+    green: #86af80;
+    lightgreen: #88cc22;
+    
+    /* Yellow variants */
+    yellow: #e8ae5b;
+    lightyellow: #ffa75d;
+    
+    /* Blue variants */
+    blue: #6495ed;
+    lightblue: #87ceeb;
+    blue-highlight: rgba(100, 149, 237, 0.7);
+    
+    /* Magenta variants */
+    magenta: #deb887;
+    lightmagenta: #996600;
+    
+    /* Cyan variants */
+    cyan: #b0c4de;
+    tcyan: #ccb0c4de;
+    lightcyan: #b0c4de;
+    
+    /* White variants */
+    white: #bbaa99;
+    lightwhite: #ddccbb;
+    
+    /* Additional UI colors */
+    backlight: #ccffeedd;
+    border-main: #554444;
+    border-dark: rgba(10, 10, 10, 1);
+    
+    /* Fonts */
+    font-main: "JetBrainsMono Nerd Font Mono 12";
+    font-small: "JetBrainsMono Nerd Font Mono 8";
+    font-medium: "JetBrainsMono Nerd Font Mono 10";
+    font-input: "JetBrainsMono Nerd Font Mono 18";
+    font-prompt: "JetBrainsMono Nerd Font Mono Bold 14";
+    font-entry: "JetBrainsMono Nerd Font Mono Italic 14";
+    font-button: "JetBrainsMono Nerd Font Mono 22";
+}
