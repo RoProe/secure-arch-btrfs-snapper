@@ -3,9 +3,15 @@
 # runs via arch-chroot in new system and gets variables passed by arch_setup.sh
 set -euo pipefail
 
-CYAN='\033[0;36m'; GREEN='\033[0;32m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "\${CYAN}[INFO]\${NC} \$*"; }
 success() { echo -e "\${GREEN}[OK]\${NC}   \$*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
+die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+
+# ── sanity check — ensure required vars were passed ───────────────────────────
+: "${USERNAME:?}" "${HOSTNAME:?}" "${TIMEZONE:?}" "${LOCALE:?}" "${KEYMAP:?}"
+: "${LUKS_UUID:?}" "${GPU_CHOICE:?}" "${ALL_PKGS:?}"
 
 # ── passwords ─────────────────────────────────────────────────────────────────
 echo "Set ROOT password:"
@@ -21,7 +27,7 @@ locale-gen
 echo "LANG=${LOCALE}" > /etc/locale.conf
 
 # ── vconsole ──────────────────────────────────────────────────────────────────
-printf 'KEYMAP=${KEYMAP}\n' > /etc/vconsole.conf
+printf "KEYMAP=${KEYMAP}\n" > /etc/vconsole.conf
 
 # ── hostname ──────────────────────────────────────────────────────────────────
 echo "${HOSTNAME}" > /etc/hostname
@@ -33,16 +39,15 @@ passwd "${USERNAME}"
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 # ── autologin (optional) ──────────────────────────────────────────────────────
-$(if $ENABLE_AUTOLOGIN; then cat << ALEOF
-info "Configuring autologin..."
-mkdir -p /etc/systemd/system/getty@tty1.service.d
-cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << AUTOEOF
+if [[ "${ENABLE_AUTOLOGIN}" == "true" ]] ; then
+  info "Configuring autologin..."
+  mkdir -p /etc/systemd/system/getty@tty1.service.d
+  cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << EOF
 [Service]
 ExecStart=
 ExecStart=-/sbin/agetty -a ${USERNAME} --noclear %I \$TERM
-AUTOEOF
-ALEOF
-fi)
+EOF
+fi
 
 # ── services ──────────────────────────────────────────────────────────────────
 systemctl enable NetworkManager
@@ -53,15 +58,15 @@ systemctl enable power-profiles-daemon 2>/dev/null || true
 systemctl enable syncthing@${USERNAME}.service 2>/dev/null || true
 
 # ── hibernate config (suspend-to-disk via swapfile) ───────────────────────────
-$(if $ENABLE_SWAP; then cat << 'HIBEOF'
-info "Configuring hibernate..."
+if [[ "${ENABLE_SWAP}" == "true" ]] ; then
+  info "Configuring hibernate..."
 
-# Override systemd sleep defaults to always hibernate, never suspend-to-RAM.
-# This means closing the lid or running 'systemctl hibernate' writes RAM to
-# the encrypted swapfile and powers off. On next boot LUKS is unlocked first,
-# then the kernel reads the hibernate image from the swapfile.
-mkdir -p /etc/systemd/sleep.conf.d
-cat > /etc/systemd/sleep.conf.d/hibernate.conf << 'EOF'
+  # Override systemd sleep defaults to always hibernate, never suspend-to-RAM.
+  # This means closing the lid or running 'systemctl hibernate' writes RAM to
+  # the encrypted swapfile and powers off. On next boot LUKS is unlocked first,
+  # then the kernel reads the hibernate image from the swapfile.
+  mkdir -p /etc/systemd/sleep.conf.d
+  cat > /etc/systemd/sleep.conf.d/hibernate.conf << 'EOF'
 [Sleep]
 AllowSuspend=no
 AllowHibernation=yes
@@ -69,10 +74,9 @@ AllowHybridSleep=no
 AllowSuspendThenHibernate=no
 HibernateMode=shutdown
 EOF
-
-# Allow wheel users to hibernate without sudo password via polkit
-mkdir -p /etc/polkit-1/rules.d
-cat > /etc/polkit-1/rules.d/10-hibernate.rules << 'EOF'
+  # Allow wheel users to hibernate without sudo password via polkit
+  mkdir -p /etc/polkit-1/rules.d
+  cat > /etc/polkit-1/rules.d/10-hibernate.rules << 'EOF'
 polkit.addRule(function(action, subject) {
     if ((action.id == "org.freedesktop.login1.hibernate" ||
          action.id == "org.freedesktop.login1.hibernate-multiple-sessions") &&
@@ -81,10 +85,8 @@ polkit.addRule(function(action, subject) {
     }
 });
 EOF
-
-success "Hibernate configured. Use: systemctl hibernate"
-HIBEOF
-fi)
+  success "Hibernate configured. Use: systemctl hibernate"
+fi
 
 # ── snapper ───────────────────────────────────────────────────────────────────
 snapper -c root create-config /
@@ -158,15 +160,16 @@ hostonly="no"
 add_dracutmodules+=" snapshot-menu "
 EOF
 
-$(if [[ "$GPU_CHOICE" == nvidia* ]]; then cat << 'NVEOF'
 # ── Nvidia dracut config ──────────────────────────────────────────────────────
-cat > /etc/dracut.conf.d/nvidia.conf << 'EOF'
+if [[ "$GPU_CHOICE" == nvidia* ]] ; then
+  cat > /etc/dracut.conf.d/nvidia.conf << 'EOF'
 add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "
 EOF
-# Wayland requires DRM modesetting; fbdev needed for early KMS
-sed -i 's/"$/ nvidia_drm.modeset=1 nvidia_drm.fbdev=1"/' /etc/dracut.conf.d/cmdline.conf
 
-cat > /etc/pacman.d/hooks/nvidia-dracut.hook << 'EOF'
+# Wayland requires DRM modesetting; fbdev needed for early KMS
+  sed -i 's/"$/ nvidia_drm.modeset=1 nvidia_drm.fbdev=1"/' /etc/dracut.conf.d/cmdline.conf
+
+  cat > /etc/pacman.d/hooks/nvidia-dracut.hook << 'EOF'
 [Trigger]
 Type = Package
 Operation = Install
@@ -179,8 +182,7 @@ Description = Rebuilding UKI for nvidia driver update...
 When = PostTransaction
 Exec = /usr/local/bin/dracut-install.sh
 EOF
-NVEOF
-fi)
+fi
 
 # ── post-LUKS snapshot menu — dracut module ───────────────────────────────────
 #
