@@ -53,19 +53,42 @@ done < <(lsblk -d -o NAME,SIZE,MODEL | grep -v 'NAME\|loop')
 DISK=$(dialog --stdout --menu "Select target disk" 15 70 6 "${DISK_ENTRIES[@]}") \
   || die "No disk selected."
 
+# ── CPU auto-detect ───────────────────────────────────────────────────────────
+CPU_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}')
+if [[ "$CPU_VENDOR" == "GenuineIntel" ]]; then
+  CPU_DEFAULT="intel"
+else
+  CPU_DEFAULT="amd"
+fi
+AMD_DEFAULT=$(  [[ "$CPU_DEFAULT" == "amd"   ]] && echo "ON" || echo "OFF" )
+INTEL_DEFAULT=$([[ "$CPU_DEFAULT" == "intel" ]] && echo "ON" || echo "OFF" )
+
 # ── CPU ───────────────────────────────────────────────────────────────────────
-CPU=$(dialog --stdout --radiolist "CPU vendor" 10 50 2 \
-  "amd"   "AMD (amd-ucode)"     ON \
-  "intel" "Intel (intel-ucode)" OFF) \
+CPU=$(dialog --stdout --radiolist \
+  "CPU vendor\n\nAuto-detected: ${CPU_VENDOR:-unknown}" \
+  12 50 2 \
+  "amd"   "AMD (amd-ucode)"     "$AMD_DEFAULT" \
+  "intel" "Intel (intel-ucode)" "$INTEL_DEFAULT") \
   || die "No CPU selected."
 UCODE="${CPU}-ucode"
 
-# ── user & hostname ───────────────────────────────────────────────────────────
-USERNAME=$(dialog --stdout --inputbox "Enter username" 8 50 "") || die "Cancelled."
-[[ -n "$USERNAME" ]] || die "Username cannot be empty."
+# ── username ──────────────────────────────────────────────────────────────────
+while true; do
+  USERNAME=$(dialog --stdout --inputbox \
+    "Enter username\n\nRules:\n- lowercase letters, numbers, _ and - only\n- must start with a letter or _\n- max 32 characters\n\nExamples: john, my_user, dev-box" \
+    14 50 "${USERNAME:-}") || die "Cancelled."
+  [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && break
+  dialog --msgbox "Invalid username: '${USERNAME}'\n\nPlease try again." 8 45
+done
 
-HOSTNAME=$(dialog --stdout --inputbox "Enter hostname" 8 50 "") || die "Cancelled."
-[[ -n "$HOSTNAME" ]] || die "Hostname cannot be empty."
+# ── hostname ──────────────────────────────────────────────────────────────────
+while true; do
+  HOSTNAME=$(dialog --stdout --inputbox \
+    "Enter hostname\n\nRules:\n- letters and numbers only\n- hyphens allowed but not at start/end\n- max 63 characters\n\nExamples: archbox, my-laptop, dev-01" \
+    14 50 "${HOSTNAME:-}") || die "Cancelled."
+  [[ "$HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]] && break
+  dialog --msgbox "Invalid hostname: '${HOSTNAME}'\n\nPlease try again." 8 45
+done
 
 # ── timezone ──────────────────────────────────────────────────────────────────
 REGIONS=()
@@ -74,74 +97,64 @@ for r in /usr/share/zoneinfo/*/; do
   [[ "$region" =~ ^(posix|right|Etc)$ ]] && continue
   [[ -d "$r" ]] && REGIONS+=("$region" "")
 done
-REGIONS+=("custom" "Enter manually")
-REGION=$(dialog --stdout --menu "Select region" 20 50 12 "${REGIONS[@]}") || die "Cancelled."
 
-if [[ "$REGION" == "custom" ]]; then
-  TIMEZONE=$(dialog --stdout --inputbox \
-    "Enter full timezone (e.g. America/New_York, Asia/Tokyo)" 8 60 "") || die "Cancelled."
-  [[ -f "/usr/share/zoneinfo/$TIMEZONE" ]] || die "Timezone not found: $TIMEZONE"
-else
+while true; do
+  REGION=$(dialog --stdout --menu "Select region" 22 72 10 "${REGIONS[@]}") \
+    || die "Cancelled."
+
   CITIES=()
   while IFS= read -r f; do
     CITIES+=("$(basename "$f")" "")
   done < <(find /usr/share/zoneinfo/"$REGION" -maxdepth 1 -type f | sort)
-  CITIES+=("custom" "Enter manually")
 
-  CITY=$(dialog --stdout --menu "Select city — $REGION" 20 50 12 "${CITIES[@]}") || die "Cancelled."
+  CITY=$(dialog --stdout --menu "Select city — $REGION" 22 72 10 "${CITIES[@]}") \
+    || continue  # Escape → zurück zur Regionsauswahl
 
-  if [[ "$CITY" == "custom" ]]; then
-    TIMEZONE=$(dialog --stdout --inputbox \
-      "Enter full timezone (e.g. ${REGION}/YourCity)" 8 60 "${REGION}/") || die "Cancelled."
-  else
-    TIMEZONE="${REGION}/${CITY}"
-  fi
-  [[ -f "/usr/share/zoneinfo/$TIMEZONE" ]] || die "Timezone not found: $TIMEZONE"
-fi
+  TIMEZONE="${REGION}/${CITY}"
+  break
+done
 
 # ── locale ────────────────────────────────────────────────────────────────────
-_LOCALE_SEL=$(dialog --stdout --menu "Select locale" 20 55 10 \
-  "en_US.UTF-8" "English (US)" \
-  "en_GB.UTF-8" "English (UK)" \
-  "de_DE.UTF-8" "Deutsch" \
-  "de_AT.UTF-8" "Deutsch (Oesterreich)" \
-  "de_CH.UTF-8" "Deutsch (Schweiz)" \
-  "fr_FR.UTF-8" "Francais" \
-  "es_ES.UTF-8" "Espanol" \
-  "it_IT.UTF-8" "Italiano" \
-  "custom"      "Enter manually") || die "Cancelled."
+LOCALE_ENTRIES=()
+while IFS= read -r line; do
+  # /etc/locale.gen parsen — Zeilen die mit # beginnen und ein Leerzeichen haben
+  locale=$(echo "$line" | sed 's/^#[[:space:]]*//' | awk '{print $1}')
+  [[ -n "$locale" ]] && LOCALE_ENTRIES+=("$locale" "")
+done < <(grep -E '^\s*#?[a-zA-Z]' /etc/locale.gen | sort -u)
 
-if [[ "$_LOCALE_SEL" == "custom" ]]; then
-  LOCALE=$(dialog --stdout --inputbox \
-    "Enter locale (e.g. ja_JP.UTF-8)\nSee /etc/locale.gen for full list." 9 60 "") || die "Cancelled."
-  [[ -n "$LOCALE" ]] || die "Locale cannot be empty."
-else
-  LOCALE="$_LOCALE_SEL"
-fi
+while true; do
+  LOCALE=$(dialog --stdout --menu "Select locale" 22 72 10 "${LOCALE_ENTRIES[@]}") \
+    || die "Cancelled."
+  [[ -n "$LOCALE" ]] && break
+done
 
 # ── keymap ────────────────────────────────────────────────────────────────────
-_KEYMAP_SEL=$(dialog --stdout --menu "Select console keymap" 20 55 10 \
-  "us"        "English (US)" \
-  "de"        "Deutsch" \
-  "de-latin1" "Deutsch latin1 (recommended)" \
-  "at"        "Oesterreich" \
-  "fr"        "Francais" \
-  "es"        "Espanol" \
-  "it"        "Italiano" \
-  "pl"        "Polski" \
-  "custom"    "Enter manually") || die "Cancelled."
+KEYMAP_ENTRIES=()
+while IFS= read -r km; do
+  [[ -n "$km" ]] && KEYMAP_ENTRIES+=("$km" "")
+done < <(localectl list-keymaps)
 
-if [[ "$_KEYMAP_SEL" == "custom" ]]; then
-  KEYMAP=$(dialog --stdout --inputbox \
-    "Enter keymap (e.g. uk, dvorak)\nRun 'localectl list-keymaps' for full list." 9 60 "") || die "Cancelled."
-  [[ -n "$KEYMAP" ]] || die "Keymap cannot be empty."
-else
-  KEYMAP="$_KEYMAP_SEL"
-fi
+while true; do
+  KEYMAP=$(dialog --stdout --menu "Select console keymap" 22 72 10 "${KEYMAP_ENTRIES[@]}") \
+    || die "Cancelled."
+  [[ -n "$KEYMAP" ]] && break
+done
 
 # ── EFI size ──────────────────────────────────────────────────────────────────
-EFI_SIZE=$(dialog --stdout --inputbox "EFI partition size" 8 50 "1024MiB") || die "Cancelled."
-EFI_SIZE="${EFI_SIZE:-1024MiB}"
+while true; do
+  EFI_SIZE=$(dialog --stdout --inputbox "EFI partition size" 8 50 "${EFI_SIZE:-1024MiB}") || die "Cancelled."
+  if [[ ! "$EFI_SIZE" =~ ^[0-9]+(MiB|GiB)$ ]]; then
+    dialog --msgbox "Invalid format.\n\nUse e.g. 512MiB or 1GiB." 8 45
+    continue
+  fi
+  efi_mib=$(echo "$EFI_SIZE" | grep -oP '^\d+')
+  [[ "$EFI_SIZE" =~ GiB ]] && efi_mib=$(( efi_mib * 1024 ))
+  if [[ "$efi_mib" -lt 512 ]]; then
+    dialog --msgbox "EFI too small (${EFI_SIZE}).\n\nMinimum: 512MiB\nRecommended: 1024MiB" 9 45
+    continue
+  fi
+  break
+done
 
 # ── swap / hibernate ──────────────────────────────────────────────────────────
 ENABLE_SWAP=false
@@ -152,10 +165,24 @@ if dialog --yesno \
   "Enable swap + hibernate?\n\nDetected RAM: ${RAM_GIB} GiB\nRecommended swap: ${RAM_GIB} GiB\n\nThe swapfile lives inside LUKS (fully encrypted).\nHibernate state is read after LUKS unlock at boot.\nsystemd will hibernate instead of suspend-to-RAM." \
   14 58; then
   ENABLE_SWAP=true
-  SWAP_SIZE_GIB=$(dialog --stdout --inputbox \
-    "Swapfile size in GiB\n(Recommended: ${RAM_GIB} GiB to match your RAM)" \
-    10 50 "$RAM_GIB") || die "Cancelled."
-  [[ "$SWAP_SIZE_GIB" =~ ^[0-9]+$ ]] || die "Invalid swap size."
+  while true; do
+    SWAP_SIZE_GIB=$(dialog --stdout --inputbox \
+      "Swapfile size in GiB\n(Recommended: ${RAM_GIB} GiB to match your RAM)" \
+      10 50 "${SWAP_SIZE_GIB:-$RAM_GIB}") || die "Cancelled."
+    if [[ ! "$SWAP_SIZE_GIB" =~ ^[0-9]+$ ]]; then
+      dialog --msgbox "Enter a plain number, e.g. 16" 7 40
+      continue
+    fi
+    if [[ "$SWAP_SIZE_GIB" -lt 1 ]]; then
+      dialog --msgbox "Minimum swap size is 1 GiB." 7 40
+      continue
+    fi
+    if [[ "$SWAP_SIZE_GIB" -gt 128 ]]; then
+      dialog --yesno "Swap size is ${SWAP_SIZE_GIB} GiB — are you sure?\n\nThat seems very large." 9 50 \
+        && break || continue
+    fi
+    break
+  done
 fi
 
 # ── autologin ─────────────────────────────────────────────────────────────────
@@ -209,39 +236,39 @@ if [[ "$GPU_CHOICE" == nvidia* ]]; then
 fi
 
 # ── package selection ─────────────────────────────────────────────────────────
-PKGS_HYPRLAND=$(dialog --stdout --checklist "Hyprland / Wayland stack" 28 72 17 \
-  "hyprland"                    "Wayland compositor"                 ON \
-  "waybar"                      "Status bar"                         ON \
-  "hyprpaper"                   "Wallpaper daemon"                   ON \
-  "hyprpicker"                  "Color picker"                       ON \
-  "hyprsunset"                  "Blue light filter"                  ON \
-  "nwg-displays"                "Display management GUI"             ON \
-  "xdg-desktop-portal-hyprland" "XDG portal for Hyprland"           ON \
-  "xdg-desktop-portal-gtk"      "GTK portal backend (file dialogs)"  ON \
-  "xdg-utils"                   "XDG utilities"                      ON \
-  "mako"                        "Notification daemon"                ON \
-  "rofi"                        "App launcher + powermenu + alttab"  ON \
-  "swayidle"                    "Idle management"                    ON \
-  "swaylock"                    "Screen locker"                      ON \
-  "grim"                        "Screenshot tool"                    ON \
-  "slurp"                       "Region selector for screenshots"    ON \
+PKGS_HYPRLAND=$(dialog --stdout --checklist "Hyprland / Wayland stack" 22 72 10 \
+  "hyprland"                    "Wayland compositor"                     ON \
+  "waybar"                      "Status bar"                             ON \
+  "hyprpaper"                   "Wallpaper daemon"                       ON \
+  "hyprpicker"                  "Color picker"                           ON \
+  "hyprsunset"                  "Blue light filter"                      ON \
+  "nwg-displays"                "Display management GUI"                 ON \
+  "xdg-desktop-portal-hyprland" "XDG portal for Hyprland"                ON \
+  "xdg-desktop-portal-gtk"      "GTK portal backend (file dialogs)"      ON \
+  "xdg-utils"                   "XDG utilities"                          ON \
+  "mako"                        "Notification daemon"                    ON \
+  "rofi"                        "App launcher + powermenu + alttab"      ON \
+  "swayidle"                    "Idle management"                        ON \
+  "swaylock"                    "Screen locker"                          ON \
+  "grim"                        "Screenshot tool"                        ON \
+  "slurp"                       "Region selector for screenshots"        ON \
   "cliphist"                    "Clipboard history (pulls wl-clipboard)" ON \
-  "brightnessctl"               "Backlight control"                  ON) || true
+  "brightnessctl"               "Backlight control"                      ON) || true
 
-PKGS_AUDIO=$(dialog --stdout --checklist "Audio" 12 72 4 \
+PKGS_AUDIO=$(dialog --stdout --checklist "Audio" 22 72 10 \
   "pipewire"       "Audio server"             ON \
   "pipewire-pulse" "PulseAudio compatibility" ON \
   "pavucontrol"    "Volume control GUI"       ON \
   "alsa-utils"     "ALSA utilities"           ON) || true
 
-PKGS_TERMINAL=$(dialog --stdout --checklist "Terminal and Shell" 13 72 5 \
+PKGS_TERMINAL=$(dialog --stdout --checklist "Terminal and Shell" 22 72 10 \
   "kitty"   "GPU-accelerated terminal" ON \
   "zsh"     "Z shell"                  ON \
   "tmux"    "Terminal multiplexer"     ON \
   "fzf"     "Fuzzy finder"             ON \
   "zoxide"  "Smarter cd"               ON) || true
 
-PKGS_FILES=$(dialog --stdout --checklist "File management" 18 72 11 \
+PKGS_FILES=$(dialog --stdout --checklist "File management" 22 72 10 \
   "thunar-archive-plugin" "Thunar + archive plugin (pulls thunar)" ON \
   "thunar-volman"         "Thunar volume manager (pulls thunar)"   ON \
   "file-roller"           "Archive manager GUI"                    ON \
@@ -254,7 +281,7 @@ PKGS_FILES=$(dialog --stdout --checklist "File management" 18 72 11 \
   "usbutils"              "USB utilities (lsusb)"                  ON \
   "yazi"                  "Terminal file manager"                  ON) || true
 
-PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 16 72 10 \
+PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "neovim"         "Modern vim"                   ON  \
   "vim"            "Vi editor (fallback)"         OFF \
   "git"            "Version control"              ON  \
@@ -266,7 +293,7 @@ PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 16 72 10 \
   "net-tools"      "Network tools (ifconfig etc)" ON  \
   "openbsd-netcat" "Netcat"                       ON) || true
 
-PKGS_APPS=$(dialog --stdout --checklist "Applications" 20 72 11 \
+PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 10 \
   "firefox"           "Web browser"                  ON \
   "thunderbird"       "Email client"                 ON \
   "signal-desktop"    "Encrypted messenger"           ON \
@@ -279,7 +306,17 @@ PKGS_APPS=$(dialog --stdout --checklist "Applications" 20 72 11 \
   "rpi-imager"        "Raspberry Pi Imager"           ON \
   "btop"              "Resource monitor"              ON) || true
 
-PKGS_SYSTEM=$(dialog --stdout --checklist "System and Security" 20 72 11 \
+WEBAPPS=$(dialog --stdout --checklist "Web Apps" 22 72 10 \
+  "github"      "GitHub"          ON  \
+  "zoom"        "Zoom"            ON  \
+  "whatsapp"    "WhatsApp Web"    OFF \
+  "notion"      "Notion"          OFF \
+  "googlemeet"  "Google Meet"     OFF \
+  "protonmail"  "Proton Mail"     OFF \
+  "linear"      "Linear"          OFF \
+  "figma"       "Figma"           OFF) || true
+
+PKGS_SYSTEM=$(dialog --stdout --checklist "System and Security" 22 72 10 \
   "fprintd"                    "Fingerprint daemon (pulls libfprint)"  ON \
   "blueman"                    "Bluetooth GUI (pulls bluez)"           ON \
   "power-profiles-daemon"      "Power profiles daemon"                 ON \
@@ -292,7 +329,7 @@ PKGS_SYSTEM=$(dialog --stdout --checklist "System and Security" 20 72 11 \
   "wireguard-tools"            "WireGuard tools"                       ON \
   "mullvad-vpn"                "Mullvad VPN client"                    ON) || true
 
-PKGS_FONTS=$(dialog --stdout --checklist "Fonts" 16 72 7 \
+PKGS_FONTS=$(dialog --stdout --checklist "Fonts" 22 72 10 \
   "ttf-jetbrains-mono-nerd"     "JetBrains Mono Nerd Font" ON \
   "ttf-hack-nerd"               "Hack Nerd Font"           ON \
   "otf-firamono-nerd"           "Fira Mono Nerd Font"      ON \
@@ -301,12 +338,12 @@ PKGS_FONTS=$(dialog --stdout --checklist "Fonts" 16 72 7 \
   "ttf-nerd-fonts-symbols-mono" "Nerd Font symbols"        ON \
   "noto-fonts-emoji"            "Emoji font"               ON) || true
 
-PKGS_SPELL=$(dialog --stdout --checklist "Spell checking" 10 72 2 \
+PKGS_SPELL=$(dialog --stdout --checklist "Spell checking" 22 72 10 \
   "hunspell-en_us" "English (US) dictionary" ON \
   "hunspell-de"    "German dictionary"        ON) || true
 
 PKGS_AUR=$(dialog --stdout --checklist \
-  "AUR packages (installed after first boot via yay)" 10 72 2 \
+  "AUR packages (installed after first boot via yay)" 22 72 10 \
   "deezer-enhanced-bin" "Deezer music client (enhanced)" ON \
   "typora"              "Markdown editor"                ON  \
   "yay-debug"           "yay debug symbols"              OFF) || true
@@ -490,6 +527,7 @@ arch-chroot /mnt env \
   ENABLE_SECUREBOOT="$ENABLE_SECUREBOOT" \
   MICROSOFT_CA="$MICROSOFT_CA" \
   PKGS_AUR="$PKGS_AUR" \
+  WEBAPPS="$WEBAPPS" \
   bash /root/chroot_setup.sh
 
 
