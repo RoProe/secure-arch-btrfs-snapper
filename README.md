@@ -68,16 +68,16 @@ ping archlinux.org   # verify
 
 ```bash
 # From a USB stick
-mount /dev/sdX1 /mnt && cp /mnt/install.sh . && umount /mnt
+mount /dev/sdX1 /mnt && cp /mnt/arch-setup.sh . && umount /mnt
 
 # Or via curl from a repo
-curl -O https://your.repo/install.sh
+curl -fsSL https://raw.githubusercontent.com/RoProe/secure-arch-btrfs-snapper/refs/heads/main/arch_setup.sh -o arch_setup.sh
 ```
 
 ### 3. Run it
 
 ```bash
-bash install.sh
+bash arch_setup.sh
 ```
 
 The TUI prompts:
@@ -87,9 +87,9 @@ The TUI prompts:
 | Target disk | Selected from auto-detected `lsblk` list |
 | CPU vendor | AMD / Intel - determines microcode package |
 | Username + hostname | Free text |
-| Timezone | Two-step region → city selector, or type manually |
-| Locale | Common locales + manual entry |
-| Keymap | Common keymaps + manual entry |
+| Timezone | Two-step region → city selector |
+| Locale | 
+| Keymap | 
 | EFI size | Default 1024MiB |
 | Swap + hibernate | Detects RAM size, recommends matching swap size |
 | Autologin | Skips user password after LUKS unlock on boot |
