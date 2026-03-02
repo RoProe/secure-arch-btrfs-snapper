@@ -50,7 +50,7 @@ while IFS= read -r line; do
   DISK_ENTRIES+=("/dev/$name" "$size  $model")
 done < <(lsblk -d -o NAME,SIZE,MODEL | grep -v 'NAME\|loop')
 
-DISK=$(dialog --stdout --menu "Select target disk" 15 70 6 "${DISK_ENTRIES[@]}") \
+DISK=$(dialog --stdout --menu "Select target disk" 22 72 6 "${DISK_ENTRIES[@]}") \
   || die "No disk selected."
 
 # ── CPU auto-detect ───────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ INTEL_DEFAULT=$([[ "$CPU_DEFAULT" == "intel" ]] && echo "ON" || echo "OFF" )
 # ── CPU ───────────────────────────────────────────────────────────────────────
 CPU=$(dialog --stdout --radiolist \
   "CPU vendor\n\nAuto-detected: ${CPU_VENDOR:-unknown}" \
-  12 50 2 \
+  22 72 2 \
   "amd"   "AMD (amd-ucode)"     "$AMD_DEFAULT" \
   "intel" "Intel (intel-ucode)" "$INTEL_DEFAULT") \
   || die "No CPU selected."
@@ -197,11 +197,11 @@ fi
 ENABLE_SECUREBOOT=false
 MICROSOFT_CA=false
 
-if dialog --yesno "Set up SecureBoot with sbctl?" 8 50; then
+if dialog --yesno "Set up SecureBoot with sbctl?" 8 72; then
   ENABLE_SECUREBOOT=true
   if dialog --yesno \
     "Include Microsoft CA?\n\n(Required for dual-boot with Windows or\nhardware needing Microsoft-signed drivers)" \
-    10 55; then
+    10 72; then
     MICROSOFT_CA=true
   fi
 fi
@@ -221,7 +221,7 @@ else                                 GPU_DEFAULT="none"
 fi
 
 GPU_CHOICE=$(dialog --stdout --menu \
-  "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}" 20 70 6 \
+  "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}" 22 72 6 \
   "amd"                "AMD — vulkan-radeon + mesa" \
   "intel"              "Intel — mesa + intel-media-driver" \
   "nvidia"             "Nvidia — nvidia-dkms + utils + egl-wayland" \
@@ -235,8 +235,31 @@ if [[ "$GPU_CHOICE" == nvidia* ]]; then
     18 62
 fi
 
+
+# ── WiFi auto-detection ───────────────────────────────────────────────────────
+WIFI_INFO=$(lspci | grep -iE "network|wireless|wifi" || echo "")
+EXTRA_WIFI_PKGS=""
+
+if echo "$WIFI_INFO" | grep -qi "broadcom\|BCM"; then
+  dialog --msgbox \
+    "Broadcom WiFi detected!\n\n${WIFI_INFO}\n\nbroadcom-wl-dkms will be added automatically.\nThis requires linux-headers (already included)." \
+    12 72
+  EXTRA_WIFI_PKGS="broadcom-wl-dkms"
+fi
+
+# ── Thunderbolt auto-detection ────────────────────────────────────────────────
+HAS_THUNDERBOLT=false
+if lspci | grep -qi "thunderbolt\|usb4"; then
+  HAS_THUNDERBOLT=true
+fi
+if ls /sys/bus/thunderbolt/devices/ 2>/dev/null | grep -q .; then
+  HAS_THUNDERBOLT=true
+fi
+TB_DEFAULT=$( $HAS_THUNDERBOLT && echo "ON" || echo "OFF" )
+
+
 # ── package selection ─────────────────────────────────────────────────────────
-PKGS_HYPRLAND=$(dialog --stdout --checklist "Hyprland / Wayland stack" 22 72 10 \
+PKGS_HYPRLAND=$(dialog --stdout --checklist "Hyprland / Wayland stack" 22 72 18 \
   "hyprland"                    "Wayland compositor"                     ON \
   "waybar"                      "Status bar"                             ON \
   "hyprpaper"                   "Wallpaper daemon"                       ON \
@@ -252,10 +275,11 @@ PKGS_HYPRLAND=$(dialog --stdout --checklist "Hyprland / Wayland stack" 22 72 10 
   "swaylock"                    "Screen locker"                          ON \
   "grim"                        "Screenshot tool"                        ON \
   "slurp"                       "Region selector for screenshots"        ON \
+  "satty"                       "Screenshot annotation tool"             ON \
   "cliphist"                    "Clipboard history (pulls wl-clipboard)" ON \
   "brightnessctl"               "Backlight control"                      ON) || true
 
-PKGS_AUDIO=$(dialog --stdout --checklist "Audio" 22 72 10 \
+PKGS_AUDIO=$(dialog --stdout --checklist "Audio" 22 72 4 \
   "pipewire"       "Audio server"             ON \
   "pipewire-pulse" "PulseAudio compatibility" ON \
   "pavucontrol"    "Volume control GUI"       ON \
@@ -266,9 +290,14 @@ PKGS_TERMINAL=$(dialog --stdout --checklist "Terminal and Shell" 22 72 10 \
   "zsh"     "Z shell"                  ON \
   "tmux"    "Terminal multiplexer"     ON \
   "fzf"     "Fuzzy finder"             ON \
-  "zoxide"  "Smarter cd"               ON) || true
+  "zoxide"  "Smarter cd"               ON \
+  "starship"  "Cross-shell prompt"     ON \
+  "ripgrep"   "Fast grep (rg)"         ON \
+  "fd"        "Better find"            ON \
+  "wget"      "File downloader"        ON \
+  "jq"        "JSON processor"         ON ) || true
 
-PKGS_FILES=$(dialog --stdout --checklist "File management" 22 72 10 \
+PKGS_FILES=$(dialog --stdout --checklist "File management" 22 72 16 \
   "thunar-archive-plugin" "Thunar + archive plugin (pulls thunar)" ON \
   "thunar-volman"         "Thunar volume manager (pulls thunar)"   ON \
   "file-roller"           "Archive manager GUI"                    ON \
@@ -279,7 +308,12 @@ PKGS_FILES=$(dialog --stdout --checklist "File management" 22 72 10 \
   "poppler-glib"          "PDF thumbnails"                         ON \
   "ntfs-3g"               "NTFS support"                           ON \
   "usbutils"              "USB utilities (lsusb)"                  ON \
-  "yazi"                  "Terminal file manager"                  ON) || true
+  "imagemagick"           "Image processing (kitty/yazi preview)"  ON \
+  "unzip"                 "ZIP extraction"                         ON \
+  "unrar"                 "RAR extraction"                         ON \
+  "p7zip"                 "7z extraction"                          ON \
+  "zip"                   "ZIP creation"                           ON \
+  "yazi"                  "Terminal file manager"                  ON ) || true
 
 PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "neovim"         "Modern vim"                   ON  \
@@ -291,22 +325,27 @@ PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "tree"           "Directory tree"               ON  \
   "bind"           "DNS utils (dig)"              ON  \
   "net-tools"      "Network tools (ifconfig etc)" ON  \
-  "openbsd-netcat" "Netcat"                       ON) || true
+  "tldr"           "Simplified man pages"         ON ) || true
 
-PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 10 \
-  "firefox"           "Web browser"                  ON \
-  "thunderbird"       "Email client"                 ON \
-  "signal-desktop"    "Encrypted messenger"           ON \
-  "obsidian"          "Markdown knowledge base"       ON \
-  "anki"              "Flashcard app"                 ON \
-  "libreoffice-fresh" "Office suite"                  ON \
-  "mpv"               "Media player"                  ON \
-  "imv"               "Image viewer"                  ON \
-  "obs-studio"        "Screen recording / streaming"  ON \
-  "rpi-imager"        "Raspberry Pi Imager"           ON \
-  "btop"              "Resource monitor"              ON) || true
+PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 16 \
+  "firefox"                  "Web browser"                                  ON \
+  "thunderbird"              "Email client"                                 ON \
+  "signal-desktop"           "Encrypted messenger"                          ON \
+  "obsidian"                 "Markdown knowledge base"                      ON \
+  "anki"                     "Flashcard app"                                ON \
+  "libreoffice-fresh"        "Office suite"                                 ON \
+  "mpv"                      "Media player"                                 ON \
+  "imv"                      "Image viewer"                                 ON \
+  "obs-studio"               "Screen recording / streaming"                 ON \
+  "rpi-imager"               "Raspberry Pi Imager"                          ON \
+  "btop"                     "Resource monitor"                             ON \
+  "texlive-basic"            "LaTeX base"                                   OFF \
+  "texlive-latexrecommended" "LaTeX recommended packages"                   OFF \
+  "texlive-fontsrecommended" "LaTeX recommended fonts"                      OFF \
+  "texstudio"                "LaTeX editor"                                 OFF \
+  "ffmpeg"                   "Audio/video converter (needed by many tools)" ON ) || true
 
-WEBAPPS=$(dialog --stdout --checklist "Web Apps" 22 72 10 \
+WEBAPPS=$(dialog --stdout --checklist "Web Apps" 22 72 8 \
   "github"      "GitHub"          ON  \
   "zoom"        "Zoom"            ON  \
   "whatsapp"    "WhatsApp Web"    OFF \
@@ -316,20 +355,36 @@ WEBAPPS=$(dialog --stdout --checklist "Web Apps" 22 72 10 \
   "linear"      "Linear"          OFF \
   "figma"       "Figma"           OFF) || true
 
-PKGS_SYSTEM=$(dialog --stdout --checklist "System and Security" 22 72 10 \
+PKGS_SYSTEM=$(dialog --stdout --checklist "System and Security" 22 72 17 \
   "fprintd"                    "Fingerprint daemon (pulls libfprint)"  ON \
   "blueman"                    "Bluetooth GUI (pulls bluez)"           ON \
   "power-profiles-daemon"      "Power profiles daemon"                 ON \
   "ufw"                        "Uncomplicated firewall"                ON \
   "seahorse"                   "Keyring GUI (pulls gnome-keyring)"     ON \
   "syncthing"                  "File sync"                             ON \
+  "rsync"                      "File sync / backup tool"               ON \
+  "borg"                       "Deduplicating backup"                  ON \
   "yubikey-manager"            "YubiKey management"                    ON \
   "network-manager-applet"     "NM tray applet (pulls networkmanager)" ON \
   "networkmanager-openconnect" "OpenConnect VPN (pulls openconnect)"   ON \
   "wireguard-tools"            "WireGuard tools"                       ON \
-  "mullvad-vpn"                "Mullvad VPN client"                    ON) || true
+  "fwupd"                      "Firmware updater (BIOS, SSD, etc.)"    ON \
+  "gnupg"                      "GPG encryption"                        ON \
+  "lsof"                       "List open files/ports"                 ON \
+  "smartmontools"              "SSD/HDD health (smartctl)"             ON \
+  "bolt"                       "Thunderbolt device manager"            "$TB_DEFAULT") || true
 
-PKGS_FONTS=$(dialog --stdout --checklist "Fonts" 22 72 10 \
+PKGS_NETWORK=$(dialog --stdout --checklist "Networking tools" 22 72 8 \
+  "nmap"            "Port scanner (pulls ncat)"         ON \
+  "mtr"             "Traceroute + ping combined"         ON \
+  "whois"           "Domain lookup"                      ON \
+  "tcpdump"         "Packet analyzer"                    ON \
+  "iperf3"          "Bandwidth tester"                   OFF \
+  "ipcalc"          "Subnet calculator"                  ON \
+  "gnu-netcat"      "Netcat (alternative to openbsd-nc)" OFF \
+  "wireshark-cli"   "Packet analyzer GUI/CLI"         OFF) || true
+
+PKGS_FONTS=$(dialog --stdout --checklist "Fonts" 22 72 7 \
   "ttf-jetbrains-mono-nerd"     "JetBrains Mono Nerd Font" ON \
   "ttf-hack-nerd"               "Hack Nerd Font"           ON \
   "otf-firamono-nerd"           "Fira Mono Nerd Font"      ON \
@@ -338,15 +393,30 @@ PKGS_FONTS=$(dialog --stdout --checklist "Fonts" 22 72 10 \
   "ttf-nerd-fonts-symbols-mono" "Nerd Font symbols"        ON \
   "noto-fonts-emoji"            "Emoji font"               ON) || true
 
-PKGS_SPELL=$(dialog --stdout --checklist "Spell checking" 22 72 10 \
+PKGS_SPELL=$(dialog --stdout --checklist "Spell checking" 22 72 2 \
   "hunspell-en_us" "English (US) dictionary" ON \
   "hunspell-de"    "German dictionary"        ON) || true
 
 PKGS_AUR=$(dialog --stdout --checklist \
-  "AUR packages (installed after first boot via yay)" 22 72 10 \
+  "AUR packages (installed after first boot via yay)" 22 72 4 \
   "deezer-enhanced-bin" "Deezer music client (enhanced)" ON \
   "typora"              "Markdown editor"                ON  \
+  "mullvad-vpn-bin"     "Mullvad VPN client"             ON  \
   "yay-debug"           "yay debug symbols"              OFF) || true
+
+
+# ── AUR helper ────────────────────────────────────────────────────────────────
+# Only asks if AUR packages got selected..
+if [[ -n "$PKGS_AUR" ]]; then
+  AUR_HELPER=$(dialog --stdout --radiolist \
+    "AUR Helper\n\nRequired to install your selected AUR packages after first boot.\nbase-devel will be added automatically." \
+    14 72 2 \
+    "paru" "Rust-based, shows PKGBUILD before install (recommended)" ON \
+    "yay"  "Go-based, most widely used"                              OFF) \
+    || die "Cancelled."
+else
+  AUR_HELPER=""
+fi
 
 # ── summary & confirm ─────────────────────────────────────────────────────────
 SWAP_SUMMARY="$( $ENABLE_SWAP      && echo "${SWAP_SIZE_GIB} GiB (hibernate enabled)" || echo "disabled" )"
@@ -366,10 +436,11 @@ GPU:         $GPU_CHOICE
 Swap:        $SWAP_SUMMARY
 Autologin:   $AL_SUMMARY
 SecureBoot:  $SB_SUMMARY
+AurHelper:   ${AUR_HELPER:-none}
 
 WARNING: ALL DATA ON $DISK WILL BE ERASED.
 
-Proceed with installation?" 24 65 || die "Aborted by user."
+Proceed with installation?" 27 65 || die "Aborted by user."
 
 # ─── derived variables ────────────────────────────────────────────────────────
 if [[ "$DISK" =~ nvme|mmcblk ]]; then
@@ -383,7 +454,7 @@ LUKS_DEV="/dev/mapper/${LUKS_NAME}"
 # Build full package list, deduplicate
 ALL_PKGS=""
 for group in "$PKGS_HYPRLAND" "$PKGS_AUDIO" "$PKGS_TERMINAL" "$PKGS_FILES" \
-             "$PKGS_EDITOR" "$PKGS_APPS" "$PKGS_SYSTEM" "$PKGS_FONTS" "$PKGS_SPELL"; do
+             "$PKGS_EDITOR" "$PKGS_APPS" "$PKGS_SYSTEM" "$PKGS_FONTS" "$PKGS_SPELL" "$PKGS_NETWORK"; do
   ALL_PKGS="$ALL_PKGS $group"
 done
 case "$GPU_CHOICE" in
@@ -393,6 +464,14 @@ case "$GPU_CHOICE" in
   hybrid-nvidia-intel) ALL_PKGS="$ALL_PKGS nvidia-dkms nvidia-utils egl-wayland lib32-nvidia-utils mesa intel-media-driver" ;;
   hybrid-nvidia-amd)   ALL_PKGS="$ALL_PKGS nvidia-dkms nvidia-utils egl-wayland lib32-nvidia-utils vulkan-radeon mesa" ;;
 esac
+
+# Broadcom WiFi (auto-detected)
+[[ -n "$EXTRA_WIFI_PKGS" ]] && ALL_PKGS="$ALL_PKGS $EXTRA_WIFI_PKGS"
+
+# AUR helper braucht base-devel
+[[ -n "$AUR_HELPER" ]] && ALL_PKGS="$ALL_PKGS base-devel"
+
+# Final deduplicate
 ALL_PKGS=$(echo "$ALL_PKGS" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ' ')
 
 clear
@@ -450,7 +529,7 @@ SWAP_RESUME_OFFSET=""
 if $ENABLE_SWAP; then
   info "Creating ${SWAP_SIZE_GIB}G swapfile..."
   touch /mnt/swap/swapfile
-  chattr +C /mnt/swap/swapfile   # belt-and-suspenders: also disable CoW at file level
+  chattr +C /mnt/swap/swapfile   # also disable CoW at file level
   fallocate -l "${SWAP_SIZE_GIB}G" /mnt/swap/swapfile
   chmod 600 /mnt/swap/swapfile
   mkswap /mnt/swap/swapfile
@@ -469,7 +548,7 @@ pacman-key --populate
 info "Running pacstrap (base system)..."
 # systemd-boot is part of systemd — already in base, bootctl is the installer tool
 pacstrap /mnt \
-  base linux linux-firmware "$UCODE" \
+  base linux linux-firmware linux-headers "$UCODE" \
   sudo vim dracut sbsigntools iwd git efibootmgr binutils \
   networkmanager pacman btrfs-progs snapper snap-pac man-db
 
@@ -494,15 +573,18 @@ fi
 
 
 # =============================================================================
-# PHASE 3 — write chroot script
+# PHASE 3 — fetch chroot script
 # =============================================================================
-
 info "Fetching chroot-setup.sh from GitHub..."
-curl -fsSL "https://raw.githubusercontent.com/RoProe/secure-arch-btrfs-snapper/refs/heads/main/chroot_setup.sh" \
-  -o /mnt/root/chroot_setup.sh
+if ! curl -fsSL \
+  "https://raw.githubusercontent.com/RoProe/secure-arch-btrfs-snapper/refs/heads/main/chroot_setup.sh" \
+  -o /mnt/root/chroot_setup.sh; then
+  die "Download failed — check internet connection."
+fi
+[[ $(wc -c < /mnt/root/chroot_setup.sh) -lt 100 ]] \
+  && die "Downloaded file looks invalid (too small). Check the GitHub URL."
 chmod +x /mnt/root/chroot_setup.sh
-
-
+success "chroot-setup.sh downloaded."
 
 # =============================================================================
 # PHASE 4 — enter chroot
@@ -528,6 +610,7 @@ arch-chroot /mnt env \
   MICROSOFT_CA="$MICROSOFT_CA" \
   PKGS_AUR="$PKGS_AUR" \
   WEBAPPS="$WEBAPPS" \
+  AUR_HELPER="$AUR_HELPER" \
   bash /root/chroot_setup.sh
 
 

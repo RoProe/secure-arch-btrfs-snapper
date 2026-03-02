@@ -74,11 +74,14 @@ mount /dev/sdX1 /mnt && cp /mnt/arch-setup.sh . && umount /mnt
 curl -fsSL https://raw.githubusercontent.com/RoProe/secure-arch-btrfs-snapper/refs/heads/main/arch_setup.sh -o arch_setup.sh
 ```
 
-### 3. Run it
-
+### 3.  Verify and Run it
 ```bash
+less bash.sh
 bash arch_setup.sh
 ```
+#You could also pipe it directly to bash but it is recommend it to verify it beforehand.
+
+
 
 The TUI prompts:
 
