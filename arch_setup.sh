@@ -472,7 +472,6 @@ case "$GPU_CHOICE" in
   hybrid-nvidia-intel) ALL_PKGS="$ALL_PKGS nvidia-open-dkms nvidia-utils egl-wayland lib32-nvidia-utils mesa intel-media-driver" ;;
   hybrid-nvidia-amd)   ALL_PKGS="$ALL_PKGS nvidia-open-dkms nvidia-utils egl-wayland lib32-nvidia-utils vulkan-radeon mesa" ;;
   nvidia-legacy) ;;
-  nvidia-legacy) ;;
 esac
 
 # Broadcom WiFi (auto-detected)

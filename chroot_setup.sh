@@ -12,6 +12,8 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 # ── sanity check — ensure required vars were passed ───────────────────────────
 : "${USERNAME:?}" "${HOSTNAME:?}" "${TIMEZONE:?}" "${LOCALE:?}" "${KEYMAP:?}"
 : "${LUKS_UUID:?}" "${GPU_CHOICE:?}" "${ALL_PKGS:?}" "${AUR_HELPER:-}" "${WEBAPPS:-}"
+: "${ENABLE_AUTOLOGIN:?}" "${ENABLE_SWAP:?}" "${ENABLE_SECUREBOOT:?}" "${MICROSOFT_CA:?}"
+: "${PKGS_AUR:-}"
 
 # ── passwords ─────────────────────────────────────────────────────────────────
 echo "Set ROOT password:"
@@ -161,7 +163,7 @@ add_dracutmodules+=" snapshot-menu "
 EOF
 
 # ── Nvidia dracut config ──────────────────────────────────────────────────────
-if [[ "$GPU_CHOICE" == nvidia* ]] ; then
+if [[ "$GPU_CHOICE" == nvidia || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
   cat > /etc/dracut.conf.d/nvidia.conf << 'EOF'
 add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "
 EOF
@@ -175,7 +177,7 @@ Type = Package
 Operation = Install
 Operation = Upgrade
 Operation = Remove
-Target = nvidia-dkms
+Target = nvidia-open-dkms
 
 [Action]
 Description = Rebuilding UKI for nvidia driver update...
