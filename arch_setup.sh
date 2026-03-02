@@ -224,16 +224,16 @@ GPU_CHOICE=$(dialog --stdout --menu \
   "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}" 22 72 7 \
   "amd"                 "AMD — vulkan-radeon + mesa" \
   "intel"               "Intel — mesa + intel-media-driver" \
-  "nvidia"              "Nvidia — nvidia-open-dkms (Maxwell+ only)" \
-  "hybrid-nvidia-intel" "Hybrid: Intel iGPU + Nvidia dGPU (Maxwell+)" \
-  "hybrid-nvidia-amd"   "Hybrid: AMD iGPU + Nvidia dGPU (Maxwell+)" \
-  "nvidia-legacy"       "Nvidia Legacy (GTX 9xx / Pascal GTX 10xx — AUR)" \
+  "nvidia"              "Nvidia — nvidia-open-dkms (Turing RTX 20xx and up as well as GTX 1650)" \
+  "hybrid-nvidia-intel" "Hybrid: Intel iGPU + Nvidia dGPU (Turing+)" \
+  "hybrid-nvidia-amd"   "Hybrid: AMD iGPU + Nvidia dGPU (Turing+)" \
+  "nvidia-legacy"       "Nvidia Legacy — (Maxwell GTX 9xx through Pascal GTX 10xx)" \
   "none"                "Skip — install manually later") || die "Cancelled."
 
-if [[ "$GPU_CHOICE" == nvidia* ]]; then
+if [[ "$GPU_CHOICE" == nvidia || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
   dialog --msgbox \
-    "Nvidia + Wayland notice:\n\nKernel params and dracut modules configured automatically.\n\nAdd to your Hyprland config after dotfile restore:\n\n  env = LIBVA_DRIVER_NAME,nvidia\n  env = __GLX_VENDOR_LIBRARY_NAME,nvidia\n  env = WLR_NO_HARDWARE_CURSORS,1\n  env = NVD_BACKEND,direct\n\nFor Optimus hybrid only:\n  env = AQ_DRM_DEVICES,/dev/dri/card1" \
-    18 62
+    "Nvidia GPU notice:\n\nMake sure you selected the right option!\n\n  GTX 1650 / RTX 20xx and newer  → nvidia (open)\n  GTX 10xx / GTX 9xx → nvidia-legacy \n\n Kernel params configured automatically. \n\n Hyprland env vars after dotfile restore: \n  env = LIBVA_DRIVER_NAME,nvidia\n  env = __GLX_VENDOR_LIBRARY_NAME,nvidia\n  env = WLR_NO_HARDWARE_CURSORS,1\n  env = NVD_BACKEND,direct" \
+    20 68
 fi
 
 
@@ -408,9 +408,9 @@ PKGS_AUR=$(dialog --stdout --checklist \
 # ── nvidia legacy — if choosen add to AUR ─────────────────────────────────────
 if [[ "$GPU_CHOICE" == "nvidia-legacy" ]]; then
   dialog --msgbox \
-    "Nvidia Legacy notice:\n\nnvidia-470xx-dkms will be added to your AUR list.\nAfter first boot run ~/post-install.sh immediately.\n\nSystem will boot with nouveau (open source) driver\nuntil the proprietary driver is installed." \
+    "Nvidia Legacy notice:\n\nnvidia-580xx-dkms will be added to your AUR list.\nAfter first boot run ~/post-install.sh immediately.\n\nSystem will boot with nouveau (open source) driver\nuntil the proprietary driver is installed." \
     12 72
-  PKGS_AUR="$PKGS_AUR nvidia-470xx-dkms"
+  PKGS_AUR="$PKGS_AUR nvidia-580xx-dkms"
 fi
 
 # ── AUR helper ────────────────────────────────────────────────────────────────
