@@ -221,13 +221,14 @@ else                                 GPU_DEFAULT="none"
 fi
 
 GPU_CHOICE=$(dialog --stdout --menu \
-  "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}" 22 72 6 \
-  "amd"                "AMD — vulkan-radeon + mesa" \
-  "intel"              "Intel — mesa + intel-media-driver" \
-  "nvidia"             "Nvidia — nvidia-dkms + utils + egl-wayland" \
-  "hybrid-nvidia-intel" "Hybrid: Intel iGPU + Nvidia dGPU (Optimus)" \
-  "hybrid-nvidia-amd"  "Hybrid: AMD iGPU + Nvidia dGPU" \
-  "none"               "Skip — install manually later") || die "Cancelled."
+  "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}" 22 72 7 \
+  "amd"                 "AMD — vulkan-radeon + mesa" \
+  "intel"               "Intel — mesa + intel-media-driver" \
+  "nvidia"              "Nvidia — nvidia-open-dkms (Maxwell+ only)" \
+  "hybrid-nvidia-intel" "Hybrid: Intel iGPU + Nvidia dGPU (Maxwell+)" \
+  "hybrid-nvidia-amd"   "Hybrid: AMD iGPU + Nvidia dGPU (Maxwell+)" \
+  "nvidia-legacy"       "Nvidia Legacy (GTX 9xx / Pascal GTX 10xx — AUR)" \
+  "none"                "Skip — install manually later") || die "Cancelled."
 
 if [[ "$GPU_CHOICE" == nvidia* ]]; then
   dialog --msgbox \
@@ -404,6 +405,13 @@ PKGS_AUR=$(dialog --stdout --checklist \
   "mullvad-vpn-bin"     "Mullvad VPN client"             ON  \
   "yay-debug"           "yay debug symbols"              OFF) || true
 
+# ── nvidia legacy — if choosen add to AUR ─────────────────────────────────────
+if [[ "$GPU_CHOICE" == "nvidia-legacy" ]]; then
+  dialog --msgbox \
+    "Nvidia Legacy notice:\n\nnvidia-470xx-dkms will be added to your AUR list.\nAfter first boot run ~/post-install.sh immediately.\n\nSystem will boot with nouveau (open source) driver\nuntil the proprietary driver is installed." \
+    12 72
+  PKGS_AUR="$PKGS_AUR nvidia-470xx-dkms"
+fi
 
 # ── AUR helper ────────────────────────────────────────────────────────────────
 # Only asks if AUR packages got selected..
@@ -460,9 +468,11 @@ done
 case "$GPU_CHOICE" in
   amd)                 ALL_PKGS="$ALL_PKGS vulkan-radeon mesa" ;;
   intel)               ALL_PKGS="$ALL_PKGS mesa intel-media-driver" ;;
-  nvidia)              ALL_PKGS="$ALL_PKGS nvidia-dkms nvidia-utils egl-wayland lib32-nvidia-utils" ;;
-  hybrid-nvidia-intel) ALL_PKGS="$ALL_PKGS nvidia-dkms nvidia-utils egl-wayland lib32-nvidia-utils mesa intel-media-driver" ;;
-  hybrid-nvidia-amd)   ALL_PKGS="$ALL_PKGS nvidia-dkms nvidia-utils egl-wayland lib32-nvidia-utils vulkan-radeon mesa" ;;
+  nvidia)              ALL_PKGS="$ALL_PKGS nvidia-open-dkms nvidia-utils egl-wayland lib32-nvidia-utils" ;;
+  hybrid-nvidia-intel) ALL_PKGS="$ALL_PKGS nvidia-open-dkms nvidia-utils egl-wayland lib32-nvidia-utils mesa intel-media-driver" ;;
+  hybrid-nvidia-amd)   ALL_PKGS="$ALL_PKGS nvidia-open-dkms nvidia-utils egl-wayland lib32-nvidia-utils vulkan-radeon mesa" ;;
+  nvidia-legacy) ;;
+  nvidia-legacy) ;;
 esac
 
 # Broadcom WiFi (auto-detected)
