@@ -31,7 +31,7 @@ xml_tag() {
 
 # Find info.xml files, sort newest snapshot IDs first, take first 20
 while IFS= read -r info; do
-  num="$(echo "$info" | sed -n 's|.*/@snapshots/\\([0-9][0-9]*\\)/info\\.xml\$|\\1|p')"
+  num="$(echo "$info" | sed -n 's|.*/@snapshots/\([0-9][0-9]*\)/info\.xml$|\1|p')"
   [ -n "$num" ] || continue
   snap_subvol="$BTRFS_MNT/@snapshots/${num}/snapshot"
   [ -d "$snap_subvol" ] || continue
