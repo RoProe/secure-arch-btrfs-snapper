@@ -17,7 +17,8 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
 # ── passwords ─────────────────────────────────────────────────────────────────
 echo "Set ROOT password:"
-passwd
+passwd < /dev/tty
+passwd "${USERNAME}" < /dev/tty
 
 # ── timezone & clock ──────────────────────────────────────────────────────────
 ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
