@@ -91,10 +91,12 @@ EOF
 fi
 
 # ── snapper ───────────────────────────────────────────────────────────────────
-snapper -c root create-config /
+snapper --no-dbus -c root create-config /
 # Snapper auto-creates /.snapshots as a new subvolume, but we already have
 # @snapshots mounted there. Delete it and restore the correct mount point.
 btrfs subvolume delete /.snapshots 2>/dev/null || true
+btrfs subvolume delete /.snapshots 2>/dev/null || true
+
 mkdir -p /.snapshots
 chmod 750 /.snapshots
 chown :wheel /.snapshots
