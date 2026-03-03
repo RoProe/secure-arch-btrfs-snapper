@@ -558,7 +558,7 @@ info "Running pacstrap (base system)..."
 pacstrap /mnt \
   base linux linux-firmware linux-headers "$UCODE" \
   sudo vim dracut sbsigntools iwd git efibootmgr binutils \
-  networkmanager pacman btrfs-progs snapper snap-pac man-db
+  networkmanager pacman btrfs-progs snapper man-db
 
 info "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
@@ -599,6 +599,8 @@ success "chroot-setup.sh downloaded."
 # =============================================================================
 success "Pre-chroot setup done. Entering chroot..."
 echo ""
+mount --bind /sys/firmware/efi/efivars /mnt/sys/firmware/efi/efivars
+
 ### all variables to chroot
 arch-chroot /mnt env \
   USERNAME="$USERNAME" \
@@ -621,7 +623,7 @@ arch-chroot /mnt env \
   AUR_HELPER="$AUR_HELPER" \
   bash /root/chroot_setup.sh
 
-
+umount /mnt/sys/firmware/efi/efivars 2>/dev/null || true
 echo ""
 success "All done!"
 echo ""
