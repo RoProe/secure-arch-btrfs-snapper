@@ -6,7 +6,11 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "${CYAN}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[OK]${NC}   $*"; }
-warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
+WARNINGS=()
+warn() { 
+  echo -e "${YELLOW}[WARN]${NC} $*"
+  WARNINGS+=("$*")
+}
 die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
 # ── sanity check — ensure required vars were passed ───────────────────────────
@@ -338,6 +342,7 @@ fi
 # timeout 0 = instant boot, no menu. Hold Space at power-on to access manually.
 # The snapshot selection happens inside the UKI's initramfs after LUKS unlock.
 info "Installing systemd-boot..."
+chmod 700 /boot/efi
 bootctl --esp-path=/boot/efi install
 
 mkdir -p /boot/efi/loader/entries
@@ -444,3 +449,12 @@ echo "║  Then log in as ${USERNAME} and run:                    ║"
 echo "║    bash ~/post-install.sh                                ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
+if [[ ${#WARNINGS[@]} -gt 0 ]]; then
+  echo ""
+  echo "══════════════════════════════════════════════════════════"
+  echo "  Warnings:"
+  for w in "${WARNINGS[@]}"; do
+    echo "  [WARN] $w"
+  done
+  echo "══════════════════════════════════════════════════════════"
+fi
