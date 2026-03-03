@@ -18,7 +18,7 @@
 # WHAT THIS SCRIPT DOES NOT DO:
 #   - SecureBoot key enrollment (requires BIOS interaction — done after first boot)
 # =============================================================================
-
+exec > >(tee /tmp/install.log) 2>&1
 set -euo pipefail
 
 # ─── colours ──────────────────────────────────────────────────────────────────
