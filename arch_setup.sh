@@ -502,9 +502,8 @@ success "EFI formatted."
 
 info "Setting up LUKS2 — enter your encryption passphrase when prompted."
 cryptsetup luksFormat --type luks2 "$LUKS_PART" < /dev/tty
-cryptsetup open --allow-discards --persistent "$LUKS_PART" "$LUKS_NAME" < /dev/tty
 info "Opening LUKS volume..."
-cryptsetup open --allow-discards --persistent "$LUKS_PART" "$LUKS_NAME"
+cryptsetup open --allow-discards --persistent "$LUKS_PART" "$LUKS_NAME" < /dev/tty
 success "LUKS volume opened."
 
 info "Creating Btrfs filesystem and subvolumes..."
