@@ -95,14 +95,13 @@ snapper --no-dbus -c root create-config /
 # Snapper auto-creates /.snapshots as a new subvolume, but we already have
 # @snapshots mounted there. Delete it and restore the correct mount point.
 btrfs subvolume delete /.snapshots 2>/dev/null || true
-btrfs subvolume delete /.snapshots 2>/dev/null || true
 
 mkdir -p /.snapshots
 chmod 750 /.snapshots
 chown :wheel /.snapshots
 
 # ── Snapper limits ────────────────────────────────────────────────────────────
-snapper -c root set-config \
+snapper --no-dbus -c root set-config \
   TIMELINE_CREATE=yes \
   TIMELINE_CLEANUP=yes \
   TIMELINE_LIMIT_HOURLY=5 \
@@ -114,7 +113,7 @@ snapper -c root set-config \
   NUMBER_LIMIT=50 \
   NUMBER_LIMIT_IMPORTANT=10
 
-systemctl enable snapper-timeline.timer snapper-cleanup.timer
+systemctl enable --no-reload snapper-timeline.timer snapper-cleanup.timer
 
 # ── install user packages ─────────────────────────────────────────────────────
 info "Installing selected packages..."
