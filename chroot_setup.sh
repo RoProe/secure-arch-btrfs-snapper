@@ -52,8 +52,8 @@ EOF
 fi
 
 # ── services ──────────────────────────────────────────────────────────────────
-systemctl enable NetworkManager
-systemctl enable fstrim.timer
+systemctl enable NetworkManager        2>/dev/null || true
+systemctl enable fstrim.timer          2>/dev/null || true
 systemctl enable bluetooth             2>/dev/null || true
 systemctl enable ufw                   2>/dev/null || true
 systemctl enable power-profiles-daemon 2>/dev/null || true
