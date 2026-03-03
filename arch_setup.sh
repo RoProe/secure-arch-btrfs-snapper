@@ -622,7 +622,6 @@ arch-chroot /mnt env \
   AUR_HELPER="$AUR_HELPER" \
   bash /root/chroot_setup.sh
 
-umount /mnt/sys/firmware/efi/efivars 2>/dev/null || true
 echo ""
 success "All done!"
 echo ""
