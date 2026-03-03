@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # chroot_setup.sh 
 # runs via arch-chroot in new system and gets variables passed by arch_setup.sh
-exec > >(tee /tmp/chroot.log) 2>&1
 set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
