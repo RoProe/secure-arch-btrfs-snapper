@@ -139,8 +139,13 @@ mkdir -p /usr/local/bin /etc/pacman.d/hooks
 cat > /usr/local/bin/dracut-install.sh << 'EOF'
 #!/usr/bin/env bash
 mkdir -p /boot/efi/EFI/Linux
-kver="$(ls -1 /usr/lib/modules | sort -V | tail -n1)"
-dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
+while read -r line; do
+    if [[ "$line" == 'usr/lib/modules/'+([^/])'/pkgbase' ]]; then
+        kver="${line#'usr/lib/modules/'}"
+        kver="${kver%'/pkgbase'}"
+        dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
+    fi
+done
 EOF
 
 cat > /usr/local/bin/dracut-remove.sh << 'EOF'
