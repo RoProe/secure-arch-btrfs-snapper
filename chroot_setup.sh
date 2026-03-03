@@ -52,12 +52,12 @@ EOF
 fi
 
 # ── services ──────────────────────────────────────────────────────────────────
-systemctl enable NetworkManager        2>/dev/null || true
-systemctl enable fstrim.timer          2>/dev/null || true
-systemctl enable bluetooth             2>/dev/null || true
-systemctl enable ufw                   2>/dev/null || true
-systemctl enable power-profiles-daemon 2>/dev/null || true
-systemctl enable syncthing@${USERNAME}.service 2>/dev/null || true
+systemctl enable --no-reload NetworkManager                || die "NetworkManager konnte nicht aktiviert werden"
+systemctl enable --no-reload fstrim.timer                  || die "fstrim.timer konnte nicht aktiviert werden"
+systemctl enable --no-reload bluetooth                     || warn "bluetooth nicht verfügbar (nicht installiert?)"
+systemctl enable --no-reload ufw                           || warn "ufw nicht verfügbar (nicht installiert?)"
+systemctl enable --no-reload power-profiles-daemon         || warn "power-profiles-daemon nicht verfügbar"
+systemctl enable --no-reload syncthing@${USERNAME}.service || warn "syncthing nicht verfügbar (nicht installiert?)"
 
 # ── hibernate config (suspend-to-disk via swapfile) ───────────────────────────
 if [[ "${ENABLE_SWAP}" == "true" ]] ; then
@@ -91,27 +91,35 @@ EOF
 fi
 
 # ── snapper ───────────────────────────────────────────────────────────────────
-snapper --no-dbus -c root create-config /
-# Snapper auto-creates /.snapshots as a new subvolume, but we already have
-# @snapshots mounted there. Delete it and restore the correct mount point.
-btrfs subvolume delete /.snapshots 2>/dev/null || true
+mkdir -p /etc/snapper/configs
+cat > /etc/snapper/configs/root << 'EOF'
+SUBVOLUME="/"
+FSTYPE="btrfs"
+QGROUP=""
+SPACE_LIMIT="0.5"
+FREE_LIMIT="0.2"
+ALLOW_USERS=""
+ALLOW_GROUPS="wheel"
+SYNC_ACL="no"
+BACKGROUND_COMPARISON="yes"
+NUMBER_CLEANUP="yes"
+NUMBER_MIN_AGE="1800"
+NUMBER_LIMIT="50"
+NUMBER_LIMIT_IMPORTANT="10"
+TIMELINE_CREATE="yes"
+TIMELINE_CLEANUP="yes"
+TIMELINE_MIN_AGE="1800"
+TIMELINE_LIMIT_HOURLY="5"
+TIMELINE_LIMIT_DAILY="7"
+TIMELINE_LIMIT_WEEKLY="4"
+TIMELINE_LIMIT_MONTHLY="6"
+TIMELINE_LIMIT_YEARLY="2"
+EOF
 
-mkdir -p /.snapshots
+echo 'SNAPPER_CONFIGS="root"' > /etc/conf.d/snapper
+
 chmod 750 /.snapshots
 chown :wheel /.snapshots
-
-# ── Snapper limits ────────────────────────────────────────────────────────────
-snapper --no-dbus -c root set-config \
-  TIMELINE_CREATE=yes \
-  TIMELINE_CLEANUP=yes \
-  TIMELINE_LIMIT_HOURLY=5 \
-  TIMELINE_LIMIT_DAILY=7 \
-  TIMELINE_LIMIT_WEEKLY=4 \
-  TIMELINE_LIMIT_MONTHLY=6 \
-  TIMELINE_LIMIT_YEARLY=2 \
-  NUMBER_CLEANUP=yes \
-  NUMBER_LIMIT=50 \
-  NUMBER_LIMIT_IMPORTANT=10
 
 systemctl enable --no-reload snapper-timeline.timer snapper-cleanup.timer
 
