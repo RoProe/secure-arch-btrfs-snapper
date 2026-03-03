@@ -329,16 +329,16 @@ PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "tldr"           "Simplified man pages"         ON ) || true
 
 PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 16 \
-  "firefox"                  "Web browser"                                  ON \
-  "thunderbird"              "Email client"                                 ON \
-  "signal-desktop"           "Encrypted messenger"                          ON \
-  "obsidian"                 "Markdown knowledge base"                      ON \
-  "anki"                     "Flashcard app"                                ON \
-  "libreoffice-fresh"        "Office suite"                                 ON \
+  "firefox"                  "Web browser"                                  OFF \
+  "thunderbird"              "Email client"                                 OFF \
+  "signal-desktop"           "Encrypted messenger"                          OFF \
+  "obsidian"                 "Markdown knowledge base"                      OFF \
+  "anki"                     "Flashcard app"                                OFF \
+  "libreoffice-fresh"        "Office suite"                                 OFF \
   "mpv"                      "Media player"                                 ON \
   "imv"                      "Image viewer"                                 ON \
-  "obs-studio"               "Screen recording / streaming"                 ON \
-  "rpi-imager"               "Raspberry Pi Imager"                          ON \
+  "obs-studio"               "Screen recording / streaming"                 OFF \
+  "rpi-imager"               "Raspberry Pi Imager"                          OFF \
   "btop"                     "Resource monitor"                             ON \
   "texlive-basic"            "LaTeX base"                                   OFF \
   "texlive-latexrecommended" "LaTeX recommended packages"                   OFF \
@@ -400,9 +400,9 @@ PKGS_SPELL=$(dialog --stdout --checklist "Spell checking" 22 72 2 \
 
 PKGS_AUR=$(dialog --stdout --checklist \
   "AUR packages (installed after first boot via yay)" 22 72 4 \
-  "deezer-enhanced-bin" "Deezer music client (enhanced)" ON \
+  "deezer-enhanced-bin" "Deezer music client (enhanced)" OFF \
   "typora"              "Markdown editor"                ON  \
-  "mullvad-vpn-bin"     "Mullvad VPN client"             ON  \
+  "mullvad-vpn-bin"     "Mullvad VPN client"             OFF  \
   "yay-debug"           "yay debug symbols"              OFF) || true
 
 # ── nvidia legacy — if choosen add to AUR ─────────────────────────────────────
