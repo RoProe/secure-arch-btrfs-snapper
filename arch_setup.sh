@@ -501,7 +501,8 @@ mkfs.fat -F32 "$EFI_PART"
 success "EFI formatted."
 
 info "Setting up LUKS2 — enter your encryption passphrase when prompted."
-cryptsetup luksFormat --type luks2 "$LUKS_PART"
+cryptsetup luksFormat --type luks2 "$LUKS_PART" < /dev/tty
+cryptsetup open --allow-discards --persistent "$LUKS_PART" "$LUKS_NAME" < /dev/tty
 info "Opening LUKS volume..."
 cryptsetup open --allow-discards --persistent "$LUKS_PART" "$LUKS_NAME"
 success "LUKS volume opened."
