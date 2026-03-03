@@ -18,7 +18,6 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 # ── passwords ─────────────────────────────────────────────────────────────────
 echo "Set ROOT password:"
 passwd < /dev/tty
-passwd "${USERNAME}" < /dev/tty
 
 # ── timezone & clock ──────────────────────────────────────────────────────────
 ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
@@ -38,7 +37,7 @@ echo "${HOSTNAME}" > /etc/hostname
 # ── user ──────────────────────────────────────────────────────────────────────
 useradd -m -G wheel "${USERNAME}"
 echo "Set password for ${USERNAME}:"
-passwd "${USERNAME}"
+passwd "${USERNAME}" < /dev/tty
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 # ── autologin (optional) ──────────────────────────────────────────────────────
