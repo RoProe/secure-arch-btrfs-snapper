@@ -55,13 +55,19 @@ ExecStart=-/sbin/agetty -a ${USERNAME} --noclear %I \$TERM
 EOF
 fi
 
-# ── services ──────────────────────────────────────────────────────────────────
-systemctl enable --no-reload NetworkManager                || die "NetworkManager konnte nicht aktiviert werden"
-systemctl enable --no-reload fstrim.timer                  || die "fstrim.timer konnte nicht aktiviert werden"
+# ── install user packages ─────────────────────────────────────────────────────
+info "Installing selected packages..."
+read -ra PKG_ARRAY <<< "$ALL_PKGS"
+pacman -S --noconfirm --needed "${PKG_ARRAY[@]}"
+
+# ── activate services ────────────────────────────────────────────
 systemctl enable --no-reload bluetooth                     || warn "bluetooth nicht verfügbar (nicht installiert?)"
 systemctl enable --no-reload ufw                           || warn "ufw nicht verfügbar (nicht installiert?)"
 systemctl enable --no-reload power-profiles-daemon         || warn "power-profiles-daemon nicht verfügbar"
 systemctl enable --no-reload syncthing@${USERNAME}.service || warn "syncthing nicht verfügbar (nicht installiert?)"
+systemctl enable --no-reload NetworkManager                || die "NetworkManager konnte nicht aktiviert werden"
+systemctl enable --no-reload fstrim.timer                  || die "fstrim.timer konnte nicht aktiviert werden"
+
 
 # ── hibernate config (suspend-to-disk via swapfile) ───────────────────────────
 if [[ "${ENABLE_SWAP}" == "true" ]] ; then
@@ -126,11 +132,6 @@ chmod 750 /.snapshots
 chown :wheel /.snapshots
 
 systemctl enable --no-reload snapper-timeline.timer snapper-cleanup.timer
-
-# ── install user packages ─────────────────────────────────────────────────────
-info "Installing selected packages..."
-read -ra PKG_ARRAY <<< "$ALL_PKGS"
-pacman -S --noconfirm --needed "${PKG_ARRAY[@]}"
 
 # ── dracut hook scripts ───────────────────────────────────────────────────────
 mkdir -p /usr/local/bin /etc/pacman.d/hooks
@@ -342,8 +343,8 @@ fi
 # timeout 0 = instant boot, no menu. Hold Space at power-on to access manually.
 # The snapshot selection happens inside the UKI's initramfs after LUKS unlock.
 info "Installing systemd-boot..."
-chmod 700 /boot/efi
 bootctl --esp-path=/boot/efi install
+chmod 700 /boot/efi
 
 mkdir -p /boot/efi/loader/entries
 
