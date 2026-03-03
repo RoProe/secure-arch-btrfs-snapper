@@ -599,7 +599,6 @@ success "chroot-setup.sh downloaded."
 # =============================================================================
 success "Pre-chroot setup done. Entering chroot..."
 echo ""
-mount --bind /sys/firmware/efi/efivars /mnt/sys/firmware/efi/efivars
 
 ### all variables to chroot
 arch-chroot /mnt env \
