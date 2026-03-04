@@ -598,6 +598,7 @@ pacstrap /mnt \
 
 info "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
+sed -i 's|fmask=0022,dmask=0022|fmask=0077,dmask=0077,umask=0077|' /mnt/etc/fstab
 success "pacstrap done."
 
 LUKS_UUID=$(blkid -s UUID -o value "$LUKS_PART")
