@@ -188,12 +188,8 @@ Exec = /usr/local/bin/dracut-install.sh
 EOF
 fi
 
-cat > /etc/dracut.conf.d/20-i18n.conf << 'EOF'
-omit_dracutmodules+=" i18n "
-EOF
-
 # ── snapper ───────────────────────────────────────────────────────────────────
-pacman -S --noconfirm snap-pac
+
 mkdir -p /etc/snapper/configs
 cat > /etc/snapper/configs/root << 'EOF'
 SUBVOLUME="/"
@@ -223,6 +219,8 @@ echo 'SNAPPER_CONFIGS="root"' > /etc/conf.d/snapper
 
 chmod 750 /.snapshots
 chown :wheel /.snapshots
+
+pacman -S --noconfirm snap-pac
 
 systemctl enable --no-reload snapper-timeline.timer snapper-cleanup.timer
 
