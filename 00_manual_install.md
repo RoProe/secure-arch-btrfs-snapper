@@ -439,6 +439,9 @@ EOF
 __Attention! Here you need both values from before - your LUKS_UUID as well as your RESUME_OFFSET__
 This is the most important file. Wrong values here = unbootable system. Double-check both UUIDs before proceeding.
 Kernel command line passed into the UKI — tells the kernel where LUKS, root, and the hibernate image are.
+In case you don't have the values: 
+LUKS_UUID = blkid -s UUID -o value /dev/nvme0n1p2
+RESUME_OFFSET = btrfs inspect-internal map-swapfile -r /swap/swapfile
 ```bash
 cat > /etc/dracut.conf.d/cmdline.conf << EOF
 kernel_cmdline="rd.luks.uuid=luks-LUKS_UUID root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=rw,noatime,compress=zstd,subvol=@ resume=/dev/mapper/cryptroot resume_offset=RESUME_OFFSET"
