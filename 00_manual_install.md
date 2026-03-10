@@ -28,6 +28,7 @@ GRUB runs *before* LUKS and must decrypt the partition itself — which forces y
 
 - UEFI system (no legacy BIOS)
 - BIOS allows enrolling custom SecureBoot keys (if using SecureBoot)
+- **If using Secure Boot: enable Setup Mode in BIOS when rebooting the first time**
 
 - I will heavily use cat and sed for editing files since the goal is to create a scriptable installer. In most cases creating and editing the files would be preferred in a manual install context.
 
@@ -491,28 +492,56 @@ If you have an older GPU that needs legacy drivers via AUR: After first boot we 
 ---
 
 ## Snapper
-We create a Snapper configurtion named "root" for the filesystem monted at /
+We create the Snapper config manually instead of using `snapper create-config` since the automatic command creates a new Btrfs subvolume at `/.snapshots` which conflicts with our already-mounted `@snapshots` subvolume from fstab.
+
+Create a Snapper configuration named "root" for the filesystem mounted at /
 ```bash
-snapper -c root create-config /
+mkdir -p /etc/snapper/configs
 ```
 
-Snapper auto-creates /.snapshots as a new Btrfs subvolume.
-Delete it — we already have @snapshots mounted there via fstab.
 ```bash
-btrfs subvolume delete /.snapshots
+cat > /etc/snapper/configs/root << 'EOF'
+SUBVOLUME="/"
+FSTYPE="btrfs"
+QGROUP=""
+SPACE_LIMIT="0.5"
+FREE_LIMIT="0.2"
+ALLOW_USERS=""
+ALLOW_GROUPS="wheel"
+SYNC_ACL="no"
+BACKGROUND_COMPARISON="yes"
+NUMBER_CLEANUP="yes"
+NUMBER_MIN_AGE="1800"
+NUMBER_LIMIT="50"
+NUMBER_LIMIT_IMPORTANT="10"
+TIMELINE_CREATE="yes"
+TIMELINE_CLEANUP="yes"
+TIMELINE_MIN_AGE="1800"
+TIMELINE_LIMIT_HOURLY="5"
+TIMELINE_LIMIT_DAILY="7"
+TIMELINE_LIMIT_WEEKLY="4"
+TIMELINE_LIMIT_MONTHLY="6"
+TIMELINE_LIMIT_YEARLY="2"
+EOF
 ```
-Recreate the mountpoint directory for the already-existing @snapshots subvolume, set permissions and make it group owned by wheel admins
+
+Set permissions on the snapshots directory.
 ```bash
-mkdir -p /.snapshots
 chmod 750 /.snapshots
 chown :wheel /.snapshots
 ```
 
-`snap-pac` automatically creates pre/post snapshots around every pacman transaction. No manual action needed for day-to-day use.
+Install `snap-pac` — automatically creates pre/post snapshots around every pacman transaction and enable snapshot timeline and cleanup.
+```bash
+pacman -S --noconfirm snap-pac
+systemctl enable --no-reload snapper-timeline.timer snapper-cleanup.timer
+```
+
 
 ---
 
 ## Post-LUKS snapshot menu (dracut module)
+
 
 This custom dracut module is bundled into the UKI. It runs inside the initramfs **after LUKS is unlocked** but before root is mounted. It reads the Snapper snapshots directly from the Btrfs volume and presents a simple menu:
 
@@ -525,291 +554,221 @@ This custom dracut module is bundled into the UKI. It runs inside the initramfs 
 └──────────────────────────────────────────────────┘
 ```
 
-Pressing `s` shows a numbered list of available snapshots (newest first). Selecting one mounts `@snapshots/N/snapshot` as root instead of `@` — a clean, read-consistent rollback.
+Pressing `s` shows a numbered list of available snapshots (newest first). Selecting one mounts `@snapshots/N/snapshot` as root instead of `@`.
 
-Create the module directory:
+### Option A — curl from repo (recommended):
+```bash
+mkdir -p /usr/lib/dracut/modules.d/99snapshot-menu
+curl -o /usr/lib/dracut/modules.d/99snapshot-menu/module-setup.sh   https://raw.githubusercontent.com/TODO
+curl -o /usr/lib/dracut/modules.d/99snapshot-menu/snapshot-menu.sh  https://raw.githubusercontent.com/TODO
+curl -o /usr/lib/dracut/modules.d/99snapshot-menu/snapshot-rewrite.sh https://raw.githubusercontent.com/TODO
+curl -o /usr/lib/dracut/modules.d/99snapshot-menu/snapshot-rewrite.service https://raw.githubusercontent.com/TODO
+chmod +x /usr/lib/dracut/modules.d/99snapshot-menu/{module-setup.sh,snapshot-menu.sh,snapshot-rewrite.sh}
+```
 
+### Option B — manual 
+create directory
 ```bash
 mkdir -p /usr/lib/dracut/modules.d/99snapshot-menu
 ```
 
-Create `module-setup.sh` and make it executabe:
-
+`module-setup.sh`: tells dracut what to bundle into the initramfs: registers `snapshot-menu.sh` as a pre-mount hook, installs `snapshot-rewrite.sh` and its systemd service, and pulls in all required binaries.
 ```bash
 cat > /usr/lib/dracut/modules.d/99snapshot-menu/module-setup.sh << 'EOF'
 #!/usr/bin/env bash
 check()   { return 0; }
 depends() { echo "btrfs"; }
 install() {
-    inst_hook initqueue/settled 50 "$moddir/snapshot-menu.sh"
-    inst_hook pre-mount 10 "$moddir/apply-rootflags.sh"
-    inst_multiple btrfs awk sed cat find mount umount
+    inst_hook pre-mount 05 "$moddir/snapshot-menu.sh"
+    inst_script "$moddir/snapshot-rewrite.sh" /usr/bin/snapshot-rewrite
+    inst_simple "$moddir/snapshot-rewrite.service" /usr/lib/systemd/system/snapshot-rewrite.service
+    inst_multiple btrfs awk sed cat find mount umount touch sort head cut tee systemctl
+    
+    ln_r /usr/lib/systemd/system/snapshot-rewrite.service \
+         /usr/lib/systemd/system/initrd.target.wants/snapshot-rewrite.service
 }
 EOF
-
-chmod +x /usr/lib/dracut/modules.d/99snapshot-menu/module-setup.sh
 ```
 
-Create second hook to apply the rootflags:
+`snapshot-rewrite.sh`: reads `/run/rootflags-override` and dynamically rewrites `sysroot.mount` with the selected snapshot's subvolume path before systemd mounts root.
 ```bash
-cat > /usr/lib/dracut/modules.d/99snapshot-menu/apply-rootflags.sh << 'EOF'
+cat > /usr/lib/dracut/modules.d/99snapshot-menu/snapshot-rewrite.sh << 'EOF'
 #!/usr/bin/env bash
 
-OVERRIDE_FILE="/run/initramfs/rootflags-override"
+OVERRIDE="/run/rootflags-override"
+[ -f "$OVERRIDE" ] || exit 0
 
-# If no override file exists, do nothing
-[ -f "$OVERRIDE_FILE" ] || exit 0
+FLAGS="$(cat "$OVERRIDE")"
+echo "snapshot-rewrite: rewriting sysroot.mount with: $FLAGS" > /dev/kmsg
 
-# Read the override flags written by snapshot-menu.sh
-rootflags="$(cat "$OVERRIDE_FILE")"
-export rootflags
+mkdir -p /run/systemd/system
+cat > /run/systemd/system/sysroot.mount << UNIT
+[Unit]
+DefaultDependencies=no
+After=systemd-cryptsetup@cryptroot.service
+Requires=systemd-cryptsetup@cryptroot.service
 
-exit 0
-EOF
+[Mount]
+What=/dev/mapper/cryptroot
+Where=/sysroot
+Type=btrfs
+Options=$FLAGS
+UNIT
 
-chmod +x /usr/lib/dracut/modules.d/99snapshot-menu/apply-rootflags.sh
-```
-
-
-`snapshot-menu.sh` — see full source in `snapshot-menu.sh`. Enable the module in dracut:
-
-```bash
-# /etc/dracut.conf.d/flags.conf
-add_dracutmodules+=" snapshot-menu "
-```
-
----
-
-## Dracut UKI configuration
-
-Create the pacman hook scripts:
-
-```bash
-cat > /usr/local/bin/dracut-install.sh << 'EOF'
-#!/usr/bin/env bash
-mkdir -p /boot/efi/EFI/Linux
-while read -r line; do
-    if [[ "$line" == 'usr/lib/modules/'+([^/])'/pkgbase' ]]; then
-        kver="${line#'usr/lib/modules/'}"
-        kver="${kver%'/pkgbase'}"
-        dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
-    fi
-done
-EOF
-
-cat > /usr/local/bin/dracut-remove.sh << 'EOF'
-#!/usr/bin/env bash
-rm -f /boot/efi/EFI/Linux/bootx64.efi
-EOF
-
-chmod +x /usr/local/bin/dracut-*
-```
-
-Pacman hooks (`/etc/pacman.d/hooks/`):
-
-```bash
-mkdir -p /etc/pacman.d/hooks
-
-cat > /etc/pacman.d/hooks/90-dracut-install.hook << 'EOF'
-[Trigger]
-Type = Path
-Operation = Install
-Operation = Upgrade
-Target = usr/lib/modules/*/pkgbase
-
-[Action]
-Description = Updating linux EFI image
-When = PostTransaction
-Exec = /usr/local/bin/dracut-install.sh
-Depends = dracut
-NeedsTargets
-EOF
-
-cat > /etc/pacman.d/hooks/60-dracut-remove.hook << 'EOF'
-[Trigger]
-Type = Path
-Operation = Remove
-Target = usr/lib/modules/*/pkgbase
-
-[Action]
-Description = Removing linux EFI image
-When = PreTransaction
-Exec = /usr/local/bin/dracut-remove.sh
-NeedsTargets
+systemctl daemon-reload
+echo "snapshot-rewrite: done" > /dev/kmsg
 EOF
 ```
 
-In the next steps we will need the Swap offset from before as well as the UUID. You can store them as variables or copy them.
-
+`snapshot-rewrite.service`: systemd unit that runs `snapshot-rewrite.sh` inside the initramfs, ordered after LUKS unlock and before `sysroot.mount`
 ```bash
-RESUME_OFFSET=$(btrfs inspect-internal map-swapfile -r /swap/swapfile)
-echo "OFFSET: $RESUME_OFFSET"
-LUKS_UUID=$(blkid -s UUID -o value /dev/nvme0n1p2)
-echo "LUKS UUID: $LUKS_UUID"
-```
+cat > /usr/lib/dracut/modules.d/99snapshot-menu/snapshot-rewrite.service << 'EOF'
+[Unit]
+Description=Snapshot sysroot.mount rewrite
+DefaultDependencies=no
+After=dracut-pre-mount.service
+Before=sysroot.mount
+ConditionPathExists=/run/rootflags-override
 
-Kernel command line (`/etc/dracut.conf.d/cmdline.conf`) — replace `YOUR_UUID` and `YOUR_OFFSET`:
-
-```bash
-cat > /etc/dracut.conf.d/cmdline.conf << EOF
-kernel_cmdline="rd.luks.uuid=luks-${LUKS_UUID} root=/dev/mapper/cryptroot \
-rootfstype=btrfs rootflags=rw,noatime,compress=zstd,subvol=@ \
-resume=/dev/mapper/cryptroot resume_offset=${RESUME_OFFSET}"
-EOF
-#omit resume = and resume_offset if not using Hibernate
-```
-_If you are using a **Nvidia GPU** the cmdline.conf should look a little different:_
-```bash
-cat > /etc/dracut.conf.d/cmdline.conf << EOF
-kernel_cmdline="rd.luks.uuid=luks-${LUKS_UUID} root=/dev/mapper/cryptroot \
-rootfstype=btrfs rootflags=rw,noatime,compress=zstd,subvol=@ \
-resume=/dev/mapper/cryptroot resume_offset=${RESUME_OFFSET} \
-nvidia_drm.modeset=1 nvidia_drm.fbdev=1"
-EOF
-```
-
-Parameter explanation:
-- rd.luks.uuid=luks-<UUID> _Tells dracut which LUKS2 container to unlock in the initramfs stage. This happens before the root filesystem is mounted._
-- root=/dev/mapper/cryptroot _The decrypted device that becomes the root filesystem._
-- rootfstype=btrfs _Explicitly sets the filesystem type (required for correct early mount)._
-- rootflags=_rw,noatime,compress=zstd,subvol=@_
-- resume / resume_offset allows kernel to locate the hibernate image inside the swapfile
-
-create file with flags (`/etc/dracut.conf.d/flags.conf`):
-
-```bash
-cat > /etc/dracut.conf.d/flags.conf << 'EOF'
-compress="zstd"
-hostonly="no"
-add_dracutmodules+=" snapshot-menu "
-EOF
-```
-- compress="zstd" → smaller/faster initramfs
-- hostonly="no" → more portable initramfs (includes more drivers; slightly bigger)
-
-
-For Nvidia, additionally (`/etc/dracut.conf.d/nvidia.conf`): Only if you use the proprietary Nvidia driver
-```bash
-cat > /etc/dracut.conf.d/nvidia.conf << 'EOF'
-add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "
-EOF
-```
-
-
-Finally generate the UKI:
-
-```bash
-pacman -S linux    # triggers the dracut hook → produces /boot/efi/EFI/Linux/bootx64.efi
-```
-
-Optional sanity check:
-```bash
-ls -lh /boot/efi/EFI/Linux/bootx64.efi
-```
-
----
-
-## systemd-boot
-
-Install to the EFI partition:
-
-```bash
-bootctl --esp-path=/boot/efi install
-```
-
-Loader config (`/boot/efi/loader/loader.conf`):
-
-```ini
-default arch.conf
-timeout 0
-console-mode auto
-editor no
-```
-
-`timeout 0` = instant boot, no systemd-boot menu visible. Hold `Space` during power-on to access the systemd-boot menu manually if needed (e.g. to boot a USB stick).
-
-Boot entry (`/boot/efi/loader/entries/arch.conf`):
-
-```ini
-title   Arch Linux
-efi     /EFI/Linux/bootx64.efi
-```
-
-The snapshot selection happens inside the UKI initramfs after LUKS unlock — systemd-boot itself stays completely out of the way.
-
----
-
-## Hibernate configuration (optional, requires the offset to be set before)
-
-Tell systemd to always hibernate (suspend-to-disk) instead of suspend-to-RAM. The hibernate image is written to the encrypted swapfile and read back after the next LUKS unlock.
-
-```bash
-mkdir -p /etc/systemd/sleep.conf.d
-cat > /etc/systemd/sleep.conf.d/hibernate.conf << 'EOF'
-[Sleep]
-AllowSuspend=no
-AllowHibernation=yes
-AllowHybridSleep=no
-AllowSuspendThenHibernate=no
-HibernateMode=shutdown
-EOF
-```
-
-Allow wheel users to hibernate without a sudo password:
-
-```bash
-mkdir -p /etc/polkit-1/rules.d
-cat > /etc/polkit-1/rules.d/10-hibernate.rules << 'EOF'
-polkit.addRule(function(action, subject) {
-    if ((action.id == "org.freedesktop.login1.hibernate" ||
-         action.id == "org.freedesktop.login1.hibernate-multiple-sessions") &&
-        subject.isInGroup("wheel")) {
-        return polkit.Result.YES;
-    }
-});
-EOF
-```
-
-To hibernate: `systemctl hibernate` — or bind it to a key in Hyprland.
-
----
-
-## Autologin (optional)
-
-Logs the user into tty1 automatically after boot. The disk is still LUKS-encrypted — autologin only skips the user password prompt after LUKS is unlocked. Suitable for a desktop that stays home; optional on a laptop.
-
-```bash
-mkdir -p /etc/systemd/system/getty@tty1.service.d
-cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << 'EOF'
 [Service]
-ExecStart=
-ExecStart=-/sbin/agetty -a yourusername --noclear %I $TERM
+Type=oneshot
+ExecStart=/usr/bin/snapshot-rewrite
+RemainAfterExit=yes
+
+[Install]
+WantedBy=initrd.target
 EOF
 ```
 
---- 
-
-
-## SecureBoot (optional)
-
-Enable Setup Mode in BIOS first.
-
+`snapshot-menu.sh`: runs at pre-mount stage after LUKS is open. Mounts the raw Btrfs volume, reads Snapper's `info.xml` files to build the snapshot list, and presents the interactive menu. If a snapshot is selected, it writes the target subvolume path to `/run/rootflags-override`.
 ```bash
-pacman -S sbctl
-sbctl create-keys
-sbctl sign -s /boot/efi/EFI/Linux/bootx64.efi
+cat > /usr/lib/dracut/modules.d/99snapshot-menu/snapshot-menu.sh << 'EOF'
+#!/usr/bin/env bash
+
+BTRFS_DEV="/dev/mapper/cryptroot"
+BTRFS_MNT="/run/btrfs-root"
+DONE_FLAG="/run/snapshot-menu-done"
+
+[ -f "$DONE_FLAG" ] && return 0
+
+mkdir -p "$BTRFS_MNT"
+if ! mount -o subvolid=5 "$BTRFS_DEV" "$BTRFS_MNT" 2>/dev/null; then
+  return 0
+fi
+touch "$DONE_FLAG"
+
+declare -a SNAP_IDS=()
+declare -a SNAP_LABELS=()
+
+xml_tag() {
+  sed -n "s|.*<${1}>\([^<]*\)</${1}>.*|\1|p" "$2" | head -n1
+}
+
+while IFS= read -r info; do
+  num="$(echo "$info" | sed -n 's|.*/@snapshots/\([0-9][0-9]*\)/info\.xml$|\1|p')"
+  [ -n "$num" ] || continue
+  snap_subvol="$BTRFS_MNT/@snapshots/${num}/snapshot"
+  [ -d "$snap_subvol" ] || continue
+  desc="$(xml_tag description "$info")"
+  [ -n "$desc" ] || desc="—"
+  date="$(xml_tag date "$info" | awk '{print $1}')"
+  stype="$(xml_tag type "$info")"
+  SNAP_IDS+=("$num")
+  SNAP_LABELS+=("${date} [${stype}] ${desc}")
+done < <(
+  find "$BTRFS_MNT/@snapshots" -name "info.xml" 2>/dev/null \
+    | sed -n 's|.*/@snapshots/\([0-9]\+\)/info\.xml$|\1 &|p' \
+    | sort -nr \
+    | head -20 \
+    | cut -d' ' -f2-
+)
+
+umount "$BTRFS_MNT" 2>/dev/null || true
+
+if [ ${#SNAP_IDS[@]} -eq 0 ]; then
+  return 0
+fi
+
+exec </dev/console >/dev/console 2>/dev/console
+
+echo ""
+echo "┌──────────────────────────────────────────────────┐"
+echo "│              Boot / Snapshot Menu                │"
+echo "├──────────────────────────────────────────────────┤"
+echo "│  [Enter] or 5s timeout  →  Normal boot           │"
+echo "│  [s]                    →  Select snapshot       │"
+echo "└──────────────────────────────────────────────────┘"
+echo ""
+
+KEY=""
+read -t 5 -n 1 -s -r KEY || true
+
+if [[ "$KEY" != "s" && "$KEY" != "S" ]]; then
+  echo "Booting normally..."
+  return 0
+fi
+
+echo ""
+echo "  Available snapshots (newest first):"
+echo ""
+for i in "${!SNAP_IDS[@]}"; do
+  printf "  %3s)  %s\n" "${SNAP_IDS[$i]}" "${SNAP_LABELS[$i]}"
+done
+echo ""
+echo "    0)  Normal boot (cancel)"
+echo ""
+read -r -p "  Enter snapshot number: " CHOICE
+
+if [[ "$CHOICE" == "0" || -z "$CHOICE" ]]; then
+  echo "Booting normally..."
+  return 0
+fi
+
+VALID=false
+for id in "${SNAP_IDS[@]}"; do
+  [[ "$id" == "$CHOICE" ]] && VALID=true && break
+done
+
+if ! $VALID; then
+  echo "Invalid selection — booting normally."
+  return 0
+fi
+
+SNAP_SUBVOL="@snapshots/${CHOICE}/snapshot"
+echo "Booting snapshot ${CHOICE}: ${SNAP_SUBVOL}"
+echo "rw,noatime,compress=zstd,subvol=${SNAP_SUBVOL}" > /run/rootflags-override
+return 0
+EOF
 ```
 
-Tell dracut to sign the UKI automatically (`/etc/dracut.conf.d/secureboot.conf`):
-
+Make the scripts executable:
 ```bash
+chmod +x /usr/lib/dracut/modules.d/99snapshot-menu/{module-setup.sh,snapshot-menu.sh,snapshot-rewrite.sh}
+```
+
+
+---
+
+## SecureBoot
+Make sure your BIOS supports custom key enrollment and can enter setup mode (see Prerequisites).
+
+Install sbctl and generate personal Secure Boot keys
+```bash
+pacman -S --noconfirm sbctl
+sbctl create-keys
+```
+
+Tell dracut to automatically embed the keys when building the UKI.
+```bash
+cat > /etc/dracut.conf.d/secureboot.conf << 'EOF'
 uefi_secureboot_cert="/var/lib/sbctl/keys/db/db.pem"
 uefi_secureboot_key="/var/lib/sbctl/keys/db/db.key"
+EOF
 ```
 
-Pacman hook to re-sign after every kernel update (`/etc/pacman.d/hooks/zz-sbctl.hook`):
-
-```ini
+pacman hook: re-signs the UKI after every kernel update. `-s` saves the path to sbctl's database so `sbctl sign-all` can re-sign it too.
+```bash
+cat > /etc/pacman.d/hooks/zz-sbctl.hook << 'EOF'
 [Trigger]
 Type = Path
 Operation = Install
@@ -820,20 +779,34 @@ Target = efi/*
 Target = usr/lib/modules/*/vmlinuz
 Target = usr/lib/initcpio/*
 Target = usr/lib/**/efi/*.efi*
+
 [Action]
 Description = Signing EFI binaries...
 When = PostTransaction
-Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64.efi
+Exec = /usr/bin/sbctl sign -s /boot/efi/EFI/Linux/bootx64.efi
+EOF
 ```
 
-After reboot:
+You need to enter SetupMode in BIOS after reboot, see Chapter ##After first Boot .
 
+---
+
+## UKI
+
+Trigger the pacman hook by reinstalling the kernel — this tests the hook and builds the UKI in one step.
 ```bash
-# In BIOS: enable Setup Mode, clear existing keys
-sbctl enroll-keys --microsoft    # drop --microsoft if no Windows / no MS drivers needed
-# In BIOS: enable Secure Boot (UEFI-only), set BIOS password
-sbctl status                     # verify
+pacman -S linux
 ```
+If successful, `/boot/efi/EFI/Linux/bootx64.efi` should now exist.
+```bash
+ls -lh /boot/efi/EFI/Linux/bootx64.efi
+```
+
+Generate Boot-entry - set to your desired Disk
+```root
+efibootmgr --create --disk /dev/nvme0n1 --part 1 --label "Arch Linux" --loader "EFI\Linux\bootx64.efi"
+```
+
 
 ---
 
@@ -841,6 +814,7 @@ sbctl status                     # verify
 
 ```bash
 exit           # leave chroot
+swapoff /mnt/swap/swapfile
 umount -R /mnt
 cryptsetup close cryptroot
 reboot
@@ -849,6 +823,19 @@ reboot
 ---
 
 ## After first boot
+
+### When using SecureBoot
+After reboot, enter BIOS Setup Mode and clear existing keys, then boot into System.
+```bash
+sbctl enroll-keys --microsoft    # drop --microsoft if no Windows / no MS drivers needed
+sbctl status                     # verify
+```
+Then reboot, enable Secure Boot in BIOS and set a BIOS password.
+
+Verify after reboot.
+```bash
+sbctl status    # should show: Secure Boot: enabled
+```
 
 ```bash
 # As your user:
