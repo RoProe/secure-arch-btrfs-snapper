@@ -437,11 +437,11 @@ EOF
 
 
 __Attention! Here you need both values from before - your LUKS_UUID as well as your RESUME_OFFSET__
-This is the most important file. Wrong values here = unbootable system. Double-check both UUIDs before proceeding.
+Double-check both UUIDs before proceeding.
 Kernel command line passed into the UKI — tells the kernel where LUKS, root, and the hibernate image are.
 In case you don't have the values: 
-LUKS_UUID = blkid -s UUID -o value /dev/nvme0n1p2
-RESUME_OFFSET = btrfs inspect-internal map-swapfile -r /swap/swapfile
+- LUKS_UUID = blkid -s UUID -o value /dev/nvme0n1p2
+- RESUME_OFFSET = btrfs inspect-internal map-swapfile -r /swap/swapfile
 ```bash
 cat > /etc/dracut.conf.d/cmdline.conf << EOF
 kernel_cmdline="rd.luks.uuid=luks-LUKS_UUID root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=rw,noatime,compress=zstd,subvol=@ resume=/dev/mapper/cryptroot resume_offset=RESUME_OFFSET"
@@ -457,6 +457,36 @@ add_dracutmodules+=" snapshot-menu "
 EOF
 ```
 hostonly=yes builds a smaller initramfs with only drivers needed for this specific hardware.
+
+### Note on Nvidia GPUs:
+In case you are using an nvidia GPU, the cmdline.conf needs more attributes. Note the added nvidia_drm.modeset and nvidia_drm.fbdev
+```bash
+cat > /etc/dracut.conf.d/cmdline.conf << EOF
+kernel_cmdline="rd.luks.uuid=luks-LUKS_UUID root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=rw,noatime,compress=zstd,subvol=@ resume=/dev/mapper/cryptroot resume_offset=RESUME_OFFSET nvidia_drm.modeset=1 nvidia_drm.fbdev=1"
+EOF
+```
+
+Also create a dracut config so the Nvidia modules are loaded early in the initramfs:
+```bash
+cat > /etc/dracut.conf.d/nvidia.conf << 'EOF'
+force_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "
+EOF
+```
+
+
+__If you use a modern (RTX 20xx / GTX 1650) Nvidia GPU you can now install your drivers. If not refer to the arch manual and install the corresponding legacy driver later in the live system via your chosen AUR helper.__
+
+To check which model GPU you have:
+```bash
+lspci -k -d ::03xx
+```
+
+If you have a RTX 20xx or newer (or GTX 1650):
+```bash
+pacman -S nvidia-open-dkms
+```
+
+If you have an older GPU that needs legacy drivers via AUR: After first boot we will configure an AUR helper, install the correct drivers, and add the required Nvidia parameters to the Hyprland config — see the Hyprland section below.
 
 ---
 
