@@ -199,7 +199,7 @@ pacman-key --init
 pacman-key --populate
 ```
 
-**IMPORTANT**: Change _YOUR_UCODE_PACKAGE_ to either intel-ucode or amd-ucode, depending on your cpu !
+**IMPORTANT**: Change _YOUR_UCODE_PACKAGE_ to either intel-ucode or amd-ucode, depending on your cpu ! check cpu via grep -m1 'vendor_id' /proc/cpuinfo
 ```bash
 pacstrap /mnt base linux-firmware linux-headers YOUR_UCODE_PACKAGE sudo vim dracut sbsigntools iwd git efibootmgr binutils networkmanager pacman btrfs-progs snapper man-db
 ```
