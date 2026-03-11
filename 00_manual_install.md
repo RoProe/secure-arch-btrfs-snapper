@@ -156,8 +156,8 @@ mount -o noatime,compress=zstd,subvol=@home      /dev/mapper/cryptroot /mnt/home
 mount -o noatime,compress=zstd,subvol=@snapshots /dev/mapper/cryptroot /mnt/.snapshots
 # Logs isolated from snapshots
 mount -o noatime,compress=zstd,subvol=@var_log   /dev/mapper/cryptroot /mnt/var/log
-# Swap with disabled CoW (Copy on Write) and compression
-mount -o nodatacow,subvol=@swap          /dev/mapper/cryptroot /mnt/swap
+# Swap with disabled CoW (Copy on Write) and without compression
+mount -o noatime,nodatacow,nodatasum,compress=no,subvol=@swap /dev/mapper/cryptroot /mnt/swap
 # EFI
 mount /dev/nvme0n1p1 /mnt/boot/efi
 ```
