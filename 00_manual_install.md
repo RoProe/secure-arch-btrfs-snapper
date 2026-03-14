@@ -164,7 +164,7 @@ mount /dev/nvme0n1p1 /mnt/boot/efi
 
 - `noatime` — skip access timestamp writes. Fewer SSD writes.
 - `compress=zstd` — transparent compression, typically 20–40% space saving.
-- `nodatacow` on `@swap` — required for hibernate correctness (see above).
+- `nodatacow, compress=no and nodatasum go hand in hand` on `@swap` — required for hibernate correctness (see above).
 
 ---
 

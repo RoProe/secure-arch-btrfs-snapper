@@ -12,7 +12,7 @@
 #   1. Boot Arch Linux ISO
 #   2. Connect to internet (iwctl)
 #   3. Run: bash install.sh
-#   4. Install procedure eith TUI and preconfigured settings awaiting user confirmation or change
+#   4. Install procedure with TUI and preconfigured settings awaiting user confirmation or change
 #   5. Post install run the post-install script for some configurations and app installs  etc.
 #
 # WHAT THIS SCRIPT DOES NOT DO:
@@ -205,6 +205,7 @@ if dialog --yesno "Set up SecureBoot with sbctl?" 8 72; then
   fi
 fi
 
+#TODO maybe legacy gpu auto detection via lspci -k -d ::03xx
 # ── GPU auto-detection ────────────────────────────────────────────────────────
 GPU_INFO=$(lspci | grep -E "VGA|3D|Display" || echo "")
 HAS_NVIDIA=$(echo "$GPU_INFO" | grep -qi "nvidia"                    && echo true || echo false)
@@ -325,7 +326,8 @@ PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "tree"           "Directory tree"               ON  \
   "bind"           "DNS utils (dig)"              ON  \
   "net-tools"      "Network tools (ifconfig etc)" ON  \
-  "tldr"           "Simplified man pages"         ON ) || true
+  "tldr"           "Simplified man pages"         ON  \
+  "tmux"	   "Terminal Multiplexer"	  ON  ) || true
 
 PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 16 \
   "firefox"                  "Web browser"                                  OFF \
@@ -525,9 +527,7 @@ mount -o "${BTRFS_OPTS},subvol=@snapshots" "$LUKS_DEV" /mnt/.snapshots
 mount -o "${BTRFS_OPTS},subvol=@var_log"   "$LUKS_DEV" /mnt/var/log
 if $ENABLE_SWAP; then
   mkdir -p /mnt/swap
-  # nodatacow mandatory — Btrfs CoW makes file offsets non-contiguous,
-  # which breaks the kernel's hibernate resume_offset calculation
-  mount -o "nodatacow,subvol=@swap" "$LUKS_DEV" /mnt/swap
+  mount -o "noatime,nodatacow,nodatasum,compress=0,subvol=@swap" "$LUKS_DEV" /mnt/swap
 fi
 mount "$EFI_PART" /mnt/boot/efi
 success "Mounted."
@@ -537,7 +537,7 @@ SWAP_RESUME_OFFSET=""
 if $ENABLE_SWAP; then
   info "Creating ${SWAP_SIZE_GIB}G swapfile..."
   touch /mnt/swap/swapfile
-  chattr +C /mnt/swap/swapfile   # also disable CoW at file level
+  chattr +C /mnt/swap/swapfile  
   fallocate -l "${SWAP_SIZE_GIB}G" /mnt/swap/swapfile
   chmod 600 /mnt/swap/swapfile
   mkswap /mnt/swap/swapfile
@@ -547,7 +547,26 @@ if $ENABLE_SWAP; then
 fi
 
 
-# ── pre-pacstrap: locale/keymap for target system + dracut i18n ───────────────
+# =============================================================================
+# PHASE 2 — pacstrap
+# =============================================================================
+
+# ── pacstrap part 1 ───────────────────────────────────────────────────────────
+
+info "Refreshing pacman keys..."
+pacman-key --init
+pacman-key --populate
+
+info "Running pacstrap (base system)..."
+# we leave kernel for later after setting i18n and locale for correct initramfs build from start
+pacstrap /mnt \
+  base linux-firmware linux-headers "$UCODE" \
+  sudo vim dracut sbsigntools iwd git efibootmgr binutils \
+  networkmanager pacman btrfs-progs snapper man-db
+
+
+# ── set locale / keymap for target system and dracut i18n ─────────────────────
+
 info "Preparing locale/keymap + dracut i18n config (pre-pacstrap)..."
 
 [[ -n "${LOCALE:-}" ]] || die "LOCALE is empty"
@@ -582,22 +601,18 @@ EOF
 success "Locale/keymap + dracut i18n prepared."
 
 
-# =============================================================================
-# PHASE 2 — pacstrap
-# =============================================================================
-info "Refreshing pacman keys..."
-pacman-key --init
-pacman-key --populate
+
+# ── pacstrap part 2 (Kernel)────────────────────────────────────────────────────
+
+
 
 info "Running pacstrap (base system)..."
 # systemd-boot is part of systemd — already in base, bootctl is the installer tool
-pacstrap /mnt \
-  base linux linux-firmware linux-headers "$UCODE" \
-  sudo vim dracut sbsigntools iwd git efibootmgr binutils \
-  networkmanager pacman btrfs-progs snapper man-db
+pacstrap /mnt linux
 
 info "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
+#TODO really needed?
 sed -i 's|fmask=0022,dmask=0022|fmask=0077,dmask=0077,umask=0077|' /mnt/etc/fstab
 success "pacstrap done."
 

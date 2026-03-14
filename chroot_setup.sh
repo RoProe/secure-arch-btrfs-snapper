@@ -28,11 +28,13 @@ ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
 hwclock --systohc
 
 # ── locale ────────────────────────────────────────────────────────────────────
+# TODO redundant since happened before chroot?
 sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen
 locale-gen
 echo "LANG=${LOCALE}" > /etc/locale.conf
 
 # ── vconsole ──────────────────────────────────────────────────────────────────
+# TODO redundant 
 printf "KEYMAP=${KEYMAP}\n" > /etc/vconsole.conf
 
 # ── hostname ──────────────────────────────────────────────────────────────────
@@ -86,6 +88,7 @@ AllowHybridSleep=no
 AllowSuspendThenHibernate=no
 HibernateMode=shutdown
 EOF
+
   # Allow wheel users to hibernate without sudo password via polkit
   mkdir -p /etc/polkit-1/rules.d
   cat > /etc/polkit-1/rules.d/10-hibernate.rules << 'EOF'
@@ -160,7 +163,7 @@ EOF
 
 cat > /etc/dracut.conf.d/flags.conf << 'EOF'
 compress="zstd"
-hostonly="no"
+hostonly="yes"
 add_dracutmodules+=" snapshot-menu "
 EOF
 
@@ -170,6 +173,7 @@ if [[ "$GPU_CHOICE" == nvidia || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
 add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "
 EOF
 
+#TODO double check nvidia
 # Wayland requires DRM modesetting; fbdev needed for early KMS
   sed -i 's/"$/ nvidia_drm.modeset=1 nvidia_drm.fbdev=1"/' /etc/dracut.conf.d/cmdline.conf
 
@@ -215,6 +219,7 @@ TIMELINE_LIMIT_MONTHLY="6"
 TIMELINE_LIMIT_YEARLY="2"
 EOF
 
+# TODO root or USER better?
 echo 'SNAPPER_CONFIGS="root"' > /etc/conf.d/snapper
 
 chmod 750 /.snapshots
@@ -237,7 +242,7 @@ info "Installing snapshot menu dracut module..."
 REPO_RAW="https://raw.githubusercontent.com/RoProe/secure-arch-btrfs-snapper/refs/heads/main"
 mkdir -p /usr/lib/dracut/modules.d/99snapshot-menu
 
-for f in module-setup.sh snapshot-menu.sh apply-rootflags.sh; do
+for f in module-setup.sh snapshot-menu.sh snapshot-rewrite.sh snapshot-rewrite.service; do
   curl -fsSL "${REPO_RAW}/dracut/99snapshot-menu/${f}" \
     -o /usr/lib/dracut/modules.d/99snapshot-menu/${f}
   chmod +x /usr/lib/dracut/modules.d/99snapshot-menu/${f}
