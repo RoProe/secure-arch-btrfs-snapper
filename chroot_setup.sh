@@ -17,7 +17,7 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 : "${USERNAME:?}" "${HOSTNAME:?}" "${TIMEZONE:?}" "${LOCALE:?}" "${KEYMAP:?}"
 : "${LUKS_UUID:?}" "${GPU_CHOICE:?}" "${ALL_PKGS:?}" "${AUR_HELPER:-}" "${WEBAPPS:-}"
 : "${ENABLE_AUTOLOGIN:?}" "${ENABLE_SWAP:?}" "${ENABLE_SECUREBOOT:?}" "${MICROSOFT_CA:?}"
-: "${PKGS_AUR:-}"
+: "${PKGS_AUR:-}" "${DISK:?}"
 
 # ── passwords ─────────────────────────────────────────────────────────────────
 echo "Set ROOT password:"
@@ -249,7 +249,50 @@ for f in module-setup.sh snapshot-menu.sh snapshot-rewrite.sh snapshot-rewrite.s
 done
 success "Snapshot menu module installed."
 
+# ── Secure Boot ───────────────────────────────────────────────────────────────
+if [[ "${ENABLE_SECUREBOOT}" == "true" ]]; then
+  pacman -S --noconfirm sbctl
+  sbctl create-keys
 
+  cat > /etc/dracut.conf.d/secureboot.conf << 'EOF'
+uefi_secureboot_cert="/var/lib/sbctl/keys/db/db.pem"
+uefi_secureboot_key="/var/lib/sbctl/keys/db/db.key"
+EOF
+
+  cat > /etc/pacman.d/hooks/zz-sbctl.hook << 'EOF'
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = boot/*
+Target = efi/*
+Target = usr/lib/modules/*/vmlinuz
+Target = usr/lib/initcpio/*
+Target = usr/lib/**/efi/*.efi*
+
+[Action]
+Description = Signing EFI binaries...
+When = PostTransaction
+Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64.efi
+EOF
+fi
+
+
+# ── generate UKI (triggers dracut hook) ───────────────────────────────────────
+# This reinstalls the linux package which fires 90-dracut-install.hook,
+# which calls dracut-install.sh, which runs dracut --uefi to produce bootx64.efi
+pacman -S --noconfirm linux
+
+# Initial sign — must happen after UKI exists, before reboot
+if [[ "$ENABLE_SECUREBOOT" == "true" ]] ; then
+  sbctl sign -s /boot/efi/EFI/Linux/bootx64.efi
+fi
+
+#TODO Variables correct?
+efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux" --loader "EFI\Linux\bootx64.efi"
+
+#TODO maybe systemd-boot instead of efibootmgr?
 # ── WebApps ───────────────────────────────────────────────────────────────────
 if [[ -n "${WEBAPPS}" ]]; then
   DESKTOP_DIR="/home/${USERNAME}/.local/share/applications"
@@ -309,73 +352,7 @@ EOF
   done
 fi
 
-
-
-# ── SecureBoot (optional) ─────────────────────────────────────────────────────
-if [[ "${ENABLE_SECUREBOOT}" == "true" ]]; then
-  pacman -S --noconfirm sbctl
-  sbctl create-keys
-
-  cat > /etc/dracut.conf.d/secureboot.conf << 'EOF'
-uefi_secureboot_cert="/var/lib/sbctl/keys/db/db.pem"
-uefi_secureboot_key="/var/lib/sbctl/keys/db/db.key"
-EOF
-
-  cat > /etc/pacman.d/hooks/zz-sbctl.hook << 'EOF'
-[Trigger]
-Type = Path
-Operation = Install
-Operation = Upgrade
-Operation = Remove
-Target = boot/*
-Target = efi/*
-Target = usr/lib/modules/*/vmlinuz
-Target = usr/lib/initcpio/*
-Target = usr/lib/**/efi/*.efi*
-
-[Action]
-Description = Signing EFI binaries...
-When = PostTransaction
-Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64.efi
-EOF
-fi
-
-
-
-# ── generate UKI (triggers dracut hook) ───────────────────────────────────────
-# This reinstalls the linux package which fires 90-dracut-install.hook,
-# which calls dracut-install.sh, which runs dracut --uefi to produce bootx64.efi
-pacman -S --noconfirm linux
-
-# Initial sign — must happen after UKI exists, before reboot
-if [[ "$ENABLE_SECUREBOOT" == "true" ]] ; then
-  sbctl sign -s /boot/efi/EFI/Linux/bootx64.efi
-fi
-
-# ── systemd-boot ──────────────────────────────────────────────────────────────
-# systemd-boot is a minimal EFI boot manager - it just launches the UKI.
-# timeout 0 = instant boot, no menu. Hold Space at power-on to access manually.
-# The snapshot selection happens inside the UKI's initramfs after LUKS unlock.
-info "Installing systemd-boot..."
-bootctl --esp-path=/boot/efi install
-chmod 700 /boot/efi
-
-mkdir -p /boot/efi/loader/entries
-
-cat > /boot/efi/loader/loader.conf << 'EOF'
-default arch.conf
-timeout 0
-console-mode auto
-editor no
-EOF
-
-cat > /boot/efi/loader/entries/arch.conf << 'EOF'
-title   Arch Linux
-efi     /EFI/Linux/bootx64.efi
-EOF
-
-success "systemd-boot installed."
-
+#TODO include Nvidia legacy drivers if needed and add nvidia variables to hyprland
 # ── AUR setup ─────────────────────────────────────────────────────────────────
 if [[ -n "${PKGS_AUR:-}" ]] && [[ -n "${AUR_HELPER:-}" ]]; then
   echo "${PKGS_AUR}" | tr ' ' '\n' | grep -v '^$' > /home/${USERNAME}/aur-packages.txt

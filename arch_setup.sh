@@ -672,6 +672,7 @@ arch-chroot /mnt env \
   PKGS_AUR="$PKGS_AUR" \
   WEBAPPS="$WEBAPPS" \
   AUR_HELPER="$AUR_HELPER" \
+  DISK="$DISK" \
   bash /root/chroot_setup.sh
 
 echo ""

@@ -1,35 +1,24 @@
 #!/usr/bin/env bash
-# Post-LUKS snapshot menu — runs in initramfs after LUKS unlock.
-set -u
 
 BTRFS_DEV="/dev/mapper/cryptroot"
 BTRFS_MNT="/run/btrfs-root"
 DONE_FLAG="/run/snapshot-menu-done"
-OVERRIDE_FILE="/run/initramfs/rootflags-override"
 
-# Only run once per boot (dracut hooks can be hit multiple times)
-if [ -f "$DONE_FLAG" ]; then
+[ -f "$DONE_FLAG" ] && return 0
+
+mkdir -p "$BTRFS_MNT"
+if ! mount -o subvolid=5 "$BTRFS_DEV" "$BTRFS_MNT" 2>/dev/null; then
   return 0
 fi
 touch "$DONE_FLAG"
 
-# Mount the top-level Btrfs volume (subvolid=5 = top-level; all subvolumes visible)
-mkdir -p "$BTRFS_MNT"
-if ! mount -o subvolid=5 "$BTRFS_DEV" "$BTRFS_MNT" 2>/dev/null; then
-  return 0  # LUKS not open yet or not Btrfs — skip silently
-fi
-
-# Gather snapshots from @snapshots/*/info.xml (Snapper format)
 declare -a SNAP_IDS=()
 declare -a SNAP_LABELS=()
 
-# Helper: extract simple XML tag content without PCRE grep (-P)
 xml_tag() {
-  # \$1 = tag, \$2 = file
-  sed -n "s|.*<${1}>\\([^<]*\\)</${1}>.*|\\1|p" "$2" | head -n1
+  sed -n "s|.*<${1}>\([^<]*\)</${1}>.*|\1|p" "$2" | head -n1
 }
 
-# Find info.xml files, sort newest snapshot IDs first, take first 20
 while IFS= read -r info; do
   num="$(echo "$info" | sed -n 's|.*/@snapshots/\([0-9][0-9]*\)/info\.xml$|\1|p')"
   [ -n "$num" ] || continue
@@ -51,12 +40,12 @@ done < <(
 
 umount "$BTRFS_MNT" 2>/dev/null || true
 
-# No snapshots yet — skip menu entirely on first boot
 if [ ${#SNAP_IDS[@]} -eq 0 ]; then
   return 0
 fi
 
-# Show menu with 5-second timeout defaulting to normal boot
+exec </dev/console >/dev/console 2>/dev/console
+
 echo ""
 echo "┌──────────────────────────────────────────────────┐"
 echo "│              Boot / Snapshot Menu                │"
@@ -74,7 +63,6 @@ if [[ "$KEY" != "s" && "$KEY" != "S" ]]; then
   return 0
 fi
 
-# Show numbered snapshot list
 echo ""
 echo "  Available snapshots (newest first):"
 echo ""
@@ -91,7 +79,6 @@ if [[ "$CHOICE" == "0" || -z "$CHOICE" ]]; then
   return 0
 fi
 
-# Validate choice
 VALID=false
 for id in "${SNAP_IDS[@]}"; do
   [[ "$id" == "$CHOICE" ]] && VALID=true && break
@@ -102,9 +89,7 @@ if ! $VALID; then
   return 0
 fi
 
-# Write the chosen subvolume path for the later root mount step
 SNAP_SUBVOL="@snapshots/${CHOICE}/snapshot"
 echo "Booting snapshot ${CHOICE}: ${SNAP_SUBVOL}"
-mkdir -p "$(dirname "$OVERRIDE_FILE")"
-echo "rw,noatime,compress=zstd,subvol=${SNAP_SUBVOL}" > "$OVERRIDE_FILE"
+echo "rw,noatime,compress=zstd,subvol=${SNAP_SUBVOL}" > /run/rootflags-override
 return 0
