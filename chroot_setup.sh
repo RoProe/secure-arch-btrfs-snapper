@@ -290,9 +290,8 @@ if [[ "$ENABLE_SECUREBOOT" == "true" ]] ; then
 fi
 
 #TODO Variables correct?
-efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux" --loader "EFI\Linux\bootx64.efi"
+efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux" --loader '\EFI\Linux\bootx64.efi'
 
-#TODO maybe systemd-boot instead of efibootmgr?
 # ── WebApps ───────────────────────────────────────────────────────────────────
 if [[ -n "${WEBAPPS}" ]]; then
   DESKTOP_DIR="/home/${USERNAME}/.local/share/applications"
@@ -335,8 +334,8 @@ if [[ -n "${WEBAPPS}" ]]; then
     [[ -z "${WEBAPP_URLS[$app]:-}" ]] && continue
     PROFILE_DIR="/home/${USERNAME}/.mozilla/firefox/webapps/${app}"
     mkdir -p "$PROFILE_DIR"
-
-    cat > "${DESKTOP_DIR}/${app}-webapp.desktop" << EOF
+    sudo -u "${USERNAME}" mkdir -p "$PROFILE_DIR"
+    sudo -u "${USERNAME}" tee "${DESKTOP_DIR}/${app}-webapp.desktop" > /dev/null << EOF
 [Desktop Entry]
 Name=${WEBAPP_NAMES[$app]}
 Exec=firefox --profile ${PROFILE_DIR} --new-window ${WEBAPP_URLS[$app]}
