@@ -612,7 +612,6 @@ pacstrap /mnt linux
 
 info "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
-#TODO really needed?
 sed -i 's|fmask=0022,dmask=0022|fmask=0077,dmask=0077,umask=0077|' /mnt/etc/fstab
 success "pacstrap done."
 
