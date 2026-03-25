@@ -32,8 +32,16 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 [[ -d /sys/firmware/efi ]] || die "Not booted in UEFI mode."
 command -v dialog &>/dev/null || pacman -Sy --noconfirm dialog
 
+
+
 # =============================================================================
-# PHASE 0 — TUI CONFIGURATION
+# PHASE 0 — SYSTEM CHECKS
+# =============================================================================
+#TODO check UEFI mode
+
+
+# =============================================================================
+# PHASE 1 — TUI CONFIGURATION
 # =============================================================================
 
 clear
@@ -199,7 +207,7 @@ MICROSOFT_CA=false
 if dialog --yesno "Set up SecureBoot with sbctl?" 8 72; then
   ENABLE_SECUREBOOT=true
   if dialog --yesno \
-    "Include Microsoft CA?\n\n(Required for dual-boot with Windows or\nhardware needing Microsoft-signed drivers)" \
+    "Include Microsoft CA?\n\n(Required for dual-boot with Windows or\nhardware needing Microsoft-signed drivers\n WARNING: Only enable if you know what you are doing!\n CAN BRICK SYSTEM)" \
     10 72; then
     MICROSOFT_CA=true
   fi
@@ -487,7 +495,7 @@ ALL_PKGS=$(echo "$ALL_PKGS" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ' '
 clear
 
 # =============================================================================
-# PHASE 1 — partition, format, mount
+# PHASE 2 — partition, format, mount
 # =============================================================================
 info "Partitioning ${DISK}..."
 sgdisk --zap-all "$DISK"
@@ -548,7 +556,7 @@ fi
 
 
 # =============================================================================
-# PHASE 2 — pacstrap
+# PHASE 3 — pacstrap
 # =============================================================================
 
 # ── pacstrap part 1 ───────────────────────────────────────────────────────────
@@ -632,7 +640,7 @@ fi
 
 
 # =============================================================================
-# PHASE 3 — fetch chroot script
+# PHASE 4 — fetch chroot script
 # =============================================================================
 info "Fetching chroot-setup.sh from GitHub..."
 if ! curl -fsSL \
@@ -646,7 +654,7 @@ chmod +x /mnt/root/chroot_setup.sh
 success "chroot-setup.sh downloaded."
 
 # =============================================================================
-# PHASE 4 — enter chroot
+# PHASE 5 — enter chroot
 # =============================================================================
 success "Pre-chroot setup done. Entering chroot..."
 echo ""
