@@ -205,7 +205,7 @@ if dialog --yesno "Set up SecureBoot with sbctl?" 8 72; then
   fi
 fi
 
-#TODO maybe legacy gpu auto detection via lspci -k -d ::03xx
+#TODO maybe legacy gpu auto detection via lspci -k -d ::03xx and add nvidia legacy vs nvidia-open to selection
 # ── GPU auto-detection ────────────────────────────────────────────────────────
 GPU_INFO=$(lspci | grep -E "VGA|3D|Display" || echo "")
 HAS_NVIDIA=$(echo "$GPU_INFO" | grep -qi "nvidia"                    && echo true || echo false)
@@ -221,7 +221,7 @@ else                                 GPU_DEFAULT="none"
 fi
 
 GPU_CHOICE=$(dialog --stdout --menu \
-  "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}" 22 72 7 \
+  "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}\n!!If you are using a NVIDIA GPU, check which driver version you need on the archwiki nvidia page!!" 22 72 7 \
   "amd"                 "AMD — vulkan-radeon + mesa" \
   "intel"               "Intel — mesa + intel-media-driver" \
   "nvidia"              "Nvidia — nvidia-open-dkms (Turing RTX 20xx and up as well as GTX 1650)" \
@@ -230,7 +230,7 @@ GPU_CHOICE=$(dialog --stdout --menu \
   "nvidia-legacy"       "Nvidia Legacy — (Maxwell GTX 9xx through Pascal GTX 10xx)" \
   "none"                "Skip — install manually later") || die "Cancelled."
 
-if [[ "$GPU_CHOICE" == nvidia || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
+if [[ "$GPU_CHOICE" == nvidia* || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
   dialog --msgbox \
     "Nvidia GPU notice:\n\nMake sure you selected the right option!\n\n  GTX 1650 / RTX 20xx and newer  → nvidia (open)\n  GTX 10xx / GTX 9xx → nvidia-legacy \n\n Kernel params configured automatically. \n\n Hyprland env vars after dotfile restore: \n  env = LIBVA_DRIVER_NAME,nvidia\n  env = __GLX_VENDOR_LIBRARY_NAME,nvidia\n  env = WLR_NO_HARDWARE_CURSORS,1\n  env = NVD_BACKEND,direct" \
     20 68
@@ -318,7 +318,7 @@ PKGS_FILES=$(dialog --stdout --checklist "File management" 22 72 16 \
 
 PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "neovim"         "Modern vim"                   ON  \
-  "vim"            "Vi editor (fallback)"         OFF \
+  "vim"            "Vi editor (fallback)"         ON \
   "git"            "Version control"              ON  \
   "stow"           "Dotfile manager"              ON  \
   "bat"            "Better cat"                   ON  \
@@ -330,26 +330,26 @@ PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "tmux"	   "Terminal Multiplexer"	  ON  ) || true
 
 PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 16 \
+  "mpv"                      "Media player"                                 ON \
+  "imv"                      "Image viewer"                                 ON \   
+  "ffmpeg"                   "Audio/video converter (needed by many tools)" ON \
   "firefox"                  "Web browser"                                  OFF \
   "thunderbird"              "Email client"                                 OFF \
   "signal-desktop"           "Encrypted messenger"                          OFF \
   "obsidian"                 "Markdown knowledge base"                      OFF \
   "anki"                     "Flashcard app"                                OFF \
   "libreoffice-fresh"        "Office suite"                                 OFF \
-  "mpv"                      "Media player"                                 ON \
-  "imv"                      "Image viewer"                                 ON \
   "obs-studio"               "Screen recording / streaming"                 OFF \
   "rpi-imager"               "Raspberry Pi Imager"                          OFF \
-  "btop"                     "Resource monitor"                             ON \
+  "btop"                     "Resource monitor"                             OFF \
   "texlive-basic"            "LaTeX base"                                   OFF \
   "texlive-latexrecommended" "LaTeX recommended packages"                   OFF \
   "texlive-fontsrecommended" "LaTeX recommended fonts"                      OFF \
-  "texstudio"                "LaTeX editor"                                 OFF \
-  "ffmpeg"                   "Audio/video converter (needed by many tools)" ON ) || true
+  "texstudio"                "LaTeX editor"                                 OFF ) || true
 
 WEBAPPS=$(dialog --stdout --checklist "Web Apps" 22 72 8 \
-  "github"      "GitHub"          ON  \
-  "zoom"        "Zoom"            ON  \
+  "github"      "GitHub"          OFF  \
+  "zoom"        "Zoom"            OFF  \
   "whatsapp"    "WhatsApp Web"    OFF \
   "notion"      "Notion"          OFF \
   "googlemeet"  "Google Meet"     OFF \
