@@ -47,7 +47,7 @@ passwd "${USERNAME}" < /dev/tty
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 # ── autologin (optional) ──────────────────────────────────────────────────────
-if [[ "${ENABLE_AUTOLOGIN}" == "true" ]] ; then
+if $ENABLE_AUTOLOGIN ; then
   info "Configuring autologin..."
   mkdir -p /etc/systemd/system/getty@tty1.service.d
   cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << EOF
@@ -72,7 +72,7 @@ systemctl enable --no-reload fstrim.timer                  || die "fstrim.timer 
 
 
 # ── hibernate config (suspend-to-disk via swapfile) ───────────────────────────
-if [[ "${ENABLE_SWAP}" == "true" ]] ; then
+if $ENABLE_SWAP ; then
   info "Configuring hibernate..."
 
   # Override systemd sleep defaults to always hibernate, never suspend-to-RAM.
@@ -116,11 +116,10 @@ while read -r line; do
         kver="${kver%'/pkgbase'}"
         pkgbase=$(cat "/usr/lib/modules/${kver}/pkgbase")
         if [[ "$pkgbase" == "linux-lts" ]]; then
-            outfile="/boot/efi/EFI/Linux/bootx64-lts.efi"
+            dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64-lts.efi
         else
-            outfile="/boot/efi/EFI/Linux/bootx64.efi"
+            dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
         fi
-        dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
     fi
 done
 EOF
@@ -250,11 +249,12 @@ systemctl enable --no-reload snapper-timeline.timer snapper-cleanup.timer
 
 # ── post-LUKS snapshot menu — dracut module ───────────────────────────────────
 #
-# Two-hook design:
-#   1. snapshot-menu.sh  — initqueue/settled: shows menu after LUKS unlock,
-#                          writes rootflags-override if a snapshot was chosen.
-#   2. apply-rootflags.sh — pre-mount: reads rootflags-override and exports
-#                           $rootflags so dracut's mount step uses the snapshot.
+# Three-hook / One-service design:
+#   1. snapshot-menu.sh  	 - initqueue/settled: shows menu after LUKS unlock,
+#                         	   writes rootflags-override if a snapshot was chosen.
+#   2. module-setup.sh   	 -
+#   3.1 snapshot-rewrite.sh	 -
+#   3.2 snapshot-rewrite.service -	
 #
 info "Installing snapshot menu dracut module..."
 REPO_RAW="https://raw.githubusercontent.com/RoProe/secure-arch-btrfs-snapper/refs/heads/main"
@@ -268,7 +268,7 @@ done
 success "Snapshot menu module installed."
 
 # ── Secure Boot ───────────────────────────────────────────────────────────────
-if [[ "${ENABLE_SECUREBOOT}" == "true" ]]; then
+if $ENABLE_SECUREBOOT; then
   pacman -S --noconfirm sbctl
   sbctl create-keys
 
@@ -294,10 +294,9 @@ Description = Signing EFI binaries...
 When = PostTransaction
 Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64.efi
 EOF
-fi
 
-# hook for lts
-  if [[ "${ENABLE_LTS}" == "true" ]]; then
+  # hook for lts
+  if $ENABLE_LTS; then
     cat > /etc/pacman.d/hooks/zz-sbctl-lts.hook << 'EOF'
 [Trigger]
 Type = Path
@@ -313,26 +312,26 @@ When = PostTransaction
 Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64-lts.efi
 EOF
   fi
-
+fi
 
 # ── generate UKI (triggers dracut hook) ───────────────────────────────────────
 # This reinstalls the linux package which fires 90-dracut-install.hook,
 # which calls dracut-install.sh, which runs dracut --uefi to produce bootx64.efi
 pacman -S --noconfirm linux
 
-if [[ "${ENABLE_LTS}" == "true" ]]; then
+if ${ENABLE_LTS; then
   pacman -S --noconfirm linux-lts
 fi
 
 # Initial sign — must happen after UKI exists, before reboot
-if [[ "$ENABLE_SECUREBOOT" == "true" ]] ; then
+if $ENABLE_SECUREBOOT; then
   sbctl sign -s /boot/efi/EFI/Linux/bootx64.efi
-  if [[ "${ENABLE_LTS}" == "true" ]]; then
+  if ${ENABLE_LTS; then
     sbctl sign -s /boot/efi/EFI/Linux/bootx64-lts.efi
   fi
 fi
 
-if [[ "${ENABLE_LTS}" == "true" ]]; then
+if $ENABLE_LTS; then
   efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux LTS" --loader '\EFI\Linux\bootx64-lts.efi'
 fi
 efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux" --loader '\EFI\Linux\bootx64.efi'
@@ -347,10 +346,7 @@ if [[ -n "${WEBAPPS}" ]]; then
     ["zoom"]="https://app.zoom.us/wc"
     ["whatsapp"]="https://web.whatsapp.com"
     ["notion"]="https://notion.so"
-    ["googlemeet"]="https://meet.google.com"
     ["protonmail"]="https://mail.proton.me"
-    ["linear"]="https://linear.app"
-    ["figma"]="https://figma.com"
   )
 
   declare -A WEBAPP_NAMES=(
@@ -358,10 +354,7 @@ if [[ -n "${WEBAPPS}" ]]; then
     ["zoom"]="Zoom"
     ["whatsapp"]="WhatsApp"
     ["notion"]="Notion"
-    ["googlemeet"]="Google Meet"
     ["protonmail"]="Proton Mail"
-    ["linear"]="Linear"
-    ["figma"]="Figma"
   )
 
   declare -A WEBAPP_CATEGORIES=(
@@ -369,10 +362,7 @@ if [[ -n "${WEBAPPS}" ]]; then
     ["zoom"]="Network;VideoConference;"
     ["whatsapp"]="Network;InstantMessaging;"
     ["notion"]="Office;"
-    ["googlemeet"]="Network;VideoConference;"
     ["protonmail"]="Network;Email;"
-    ["linear"]="Office;"
-    ["figma"]="Graphics;"
   )
 
   for app in ${WEBAPPS}; do
@@ -396,7 +386,6 @@ EOF
   done
 fi
 
-#TODO include Nvidia legacy drivers if needed and add nvidia variables to hyprland
 # ── AUR setup ─────────────────────────────────────────────────────────────────
 if [[ -n "${PKGS_AUR:-}" ]] && [[ -n "${AUR_HELPER:-}" ]]; then
   echo "${PKGS_AUR}" | tr ' ' '\n' | grep -v '^$' > /home/${USERNAME}/aur-packages.txt
@@ -470,11 +459,11 @@ echo "║    umount -R /mnt                                        ║"
 echo "║    cryptsetup close ${LUKS_NAME}                        ║"
 echo "║    reboot                                                ║"
 echo "╠══════════════════════════════════════════════════════════╣"
-if [[ "${ENABLE_SECUREBOOT}" == "true" ]]; then
+if $ENABLE_SECUREBOOT; then
   echo "╠══════════════════════════════════════════════════════════╣"
   echo "║  After first boot — SecureBoot:                          ║"
   echo "║    1. Enable Setup Mode in BIOS                          ║"
-  if [[ "${MICROSOFT_CA}" == "true" ]]; then
+  if $MICROSOFT_CA; then
     echo "║    2. sbctl enroll-keys --microsoft                      ║"
   else
     echo "║    2. sbctl enroll-keys                                  ║"

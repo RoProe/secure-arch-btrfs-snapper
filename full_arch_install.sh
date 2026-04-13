@@ -4,7 +4,7 @@
 # inspired by: https://github.com/Ataraxxia/secure-arch (Btrfs adaptation with snapshots and custom snapshot menu after luks decryption and swap on LUKS partition for secure hibernate.)
 #
 # Boot flow:
-#   UEFI → systemd-boot (instant) → UKI → LUKS passphrase
+#   UEFI → UKI → LUKS passphrase
 #   → initramfs snapshot menu → [Enter] normal boot
 #                             → [s]     select snapshot → rollback boot
 #
@@ -31,14 +31,15 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 [[ $EUID -eq 0 ]]       || die "Run as root."
 [[ -d /sys/firmware/efi ]] || die "Not booted in UEFI mode."
 command -v dialog &>/dev/null || pacman -Sy --noconfirm dialog
+[[ "$(free -m | awk '/^Mem:/{print $2}')" -lt 512 ]] && die "Not enough RAM, need 512MB+."
 
 # =============================================================================
-# PHASE 0 — TUI CONFIGURATION
+# PHASE 1 — TUI CONFIGURATION
 # =============================================================================
 
 clear
 dialog --title "Arch Linux Installer" --msgbox \
-"LUKS2 + Btrfs + systemd-boot + Snapshot Menu + SecureBoot\n\nBoot flow after install:\n  UEFI → systemd-boot → LUKS passphrase\n  → snapshot menu (5s timeout) → boot\n\nPress OK to begin." 14 62
+"LUKS2 + Btrfs + Dracut UKI + Snapshot Menu + SecureBoot\n\nBoot flow after install:\n  UEFI → UKI → LUKS passphrase\n  → snapshot menu  → boot\n\nPress OK to begin." 14 62
 
 # ── disk ──────────────────────────────────────────────────────────────────────
 DISK_ENTRIES=()
@@ -51,6 +52,9 @@ done < <(lsblk -d -o NAME,SIZE,MODEL | grep -v 'NAME\|loop')
 
 DISK=$(dialog --stdout --menu "Select target disk" 22 72 6 "${DISK_ENTRIES[@]}") \
   || die "No disk selected."
+
+DISK_SIZE_GB=$(lsblk -b -d -o SIZE "$DISK" | tail -1 | awk '{print int($1/1024/1024/1024)}')
+[[ "$DISK_SIZE_GB" -lt 20 ]] && die "Disk too small (${DISK_SIZE_GB}GB, need 20GB+)."
 
 # ── CPU auto-detect ───────────────────────────────────────────────────────────
 CPU_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}')
@@ -141,7 +145,7 @@ done
 
 # ── EFI size ──────────────────────────────────────────────────────────────────
 while true; do
-  EFI_SIZE=$(dialog --stdout --inputbox "EFI partition size" 8 50 "${EFI_SIZE:-1024MiB}") || die "Cancelled."
+  EFI_SIZE=$(dialog --stdout --inputbox "EFI partition size" 8 50 "${EFI_SIZE:-2048MiB}") || die "Cancelled."
   if [[ ! "$EFI_SIZE" =~ ^[0-9]+(MiB|GiB)$ ]]; then
     dialog --msgbox "Invalid format.\n\nUse e.g. 512MiB or 1GiB." 8 45
     continue
@@ -149,11 +153,17 @@ while true; do
   efi_mib=$(echo "$EFI_SIZE" | grep -oP '^\d+')
   [[ "$EFI_SIZE" =~ GiB ]] && efi_mib=$(( efi_mib * 1024 ))
   if [[ "$efi_mib" -lt 512 ]]; then
-    dialog --msgbox "EFI too small (${EFI_SIZE}).\n\nMinimum: 512MiB\nRecommended: 1024MiB" 9 45
+    dialog --msgbox "EFI too small (${EFI_SIZE}).\n\nMinimum: 512MiB\nRecommended: 1024 with one UKI, 2048MiB with more UKIs / fallbacks" 9 45
     continue
   fi
   break
 done
+
+# ── Fallback Kernel ───────────────────────────────────────────────────────────
+ENABLE_LTS=false
+if dialog --yesno "Install LTS Fallback-Kernel?\n\n usefull if main kernel breaks \n +320MB EFI-Size \n recommended \n select it in BIOS menu" 10 58; then
+    ENABLE_LTS=true
+fi
 
 # ── swap / hibernate ──────────────────────────────────────────────────────────
 ENABLE_SWAP=false
@@ -196,44 +206,80 @@ fi
 ENABLE_SECUREBOOT=false
 MICROSOFT_CA=false
 
-if dialog --yesno "Set up SecureBoot with sbctl?" 8 72; then
+SB_SETUP_MODE=$(cat /sys/firmware/efi/efivars/SetupMode-* 2>/dev/null \
+  | xxd | awk 'END{print $NF}' || echo "unknown")
+SB_CURRENT=$(cat /sys/firmware/efi/efivars/SecureBoot-* \
+  | xxd | awk 'END{print $NF}' 2>/dev/null || echo "unknown")
+
+if [[ "$SB_SETUP_MODE" == "unknown" ]]; then
+  dialog --msgbox "SecureBoot not available.\nSkipping." 7 50
+elif dialog --yesno \
+  "Set up SecureBoot with sbctl?\n\
+\n\
+System status:\n\
+  Setup Mode:   $( [[ "$SB_SETUP_MODE" == "01" ]] && echo "Good - available" || echo "NOT available - enable in BIOS first" )\n\
+  Secure Boot:  $( [[ "$SB_CURRENT"    == "01" ]] && echo "currently ENABLED - disable in BIOS first!" || echo "Good - currently disabled" )\n\
+\n\
+REQUIREMENTS:\n\
+- Secure Boot must be DISABLED in BIOS right now\n\
+- BIOS must support Setup Mode (custom keys)" \
+  16 62; then
   ENABLE_SECUREBOOT=true
   if dialog --yesno \
-    "Include Microsoft CA?\n\n(Required for dual-boot with Windows or\nhardware needing Microsoft-signed drivers)" \
-    10 72; then
+    "Include Microsoft CA?\n\nRequired for dual-boot with Windows.\nWARNING: CAN BRICK SYSTEM on some hardware." \
+    10 62; then
     MICROSOFT_CA=true
   fi
 fi
 
-#TODO maybe legacy gpu auto detection via lspci -k -d ::03xx and add nvidia legacy vs nvidia-open to selection
+
 # ── GPU auto-detection ────────────────────────────────────────────────────────
 GPU_INFO=$(lspci | grep -E "VGA|3D|Display" || echo "")
+GPU_PCI_ID=$(lspci -nn | grep -E "VGA|3D|Display" | grep -i nvidia | grep -oP '\[10de:\K[0-9a-f]+' | head -1 || echo "")
 HAS_NVIDIA=$(echo "$GPU_INFO" | grep -qi "nvidia"                    && echo true || echo false)
 HAS_AMD=$(echo "$GPU_INFO"    | grep -qi "amd\|radeon\|advanced micro" && echo true || echo false)
 HAS_INTEL=$(echo "$GPU_INFO"  | grep -qi "intel"                     && echo true || echo false)
 
+
+
 if   $HAS_NVIDIA && $HAS_INTEL; then GPU_DEFAULT="hybrid-nvidia-intel"
 elif $HAS_NVIDIA && $HAS_AMD;   then GPU_DEFAULT="hybrid-nvidia-amd"
-elif $HAS_NVIDIA;               then GPU_DEFAULT="nvidia"
+elif $HAS_NVIDIA; then
+  [[ -n "$GPU_PCI_ID" && $((16#${GPU_PCI_ID})) -lt $((16#1e04)) ]] && GPU_DEFAULT="nvidia-legacy" || GPU_DEFAULT="nvidia"
 elif $HAS_AMD;                  then GPU_DEFAULT="amd"
 elif $HAS_INTEL;                then GPU_DEFAULT="intel"
 else                                 GPU_DEFAULT="none"
 fi
 
+[[ -n "$GPU_PCI_ID" ]] && GPU_DETECT_INFO="${GPU_INFO} [10de:${GPU_PCI_ID}]" || GPU_DETECT_INFO="${GPU_INFO:-none}"
+
 GPU_CHOICE=$(dialog --stdout --menu \
-  "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}\n!!If you are using a NVIDIA GPU, check which driver version you need on the archwiki nvidia page!!" 22 72 7 \
-  "amd"                 "AMD — vulkan-radeon + mesa" \
-  "intel"               "Intel — mesa + intel-media-driver" \
-  "nvidia"              "Nvidia — nvidia-open-dkms (Turing RTX 20xx and up as well as GTX 1650)" \
+  "GPU Driver\n\nDetected: ${GPU_DETECT_INFO}\nSuggested: ${GPU_DEFAULT}" 22 72 7 \
+  "amd"                 "AMD - vulkan-radeon + mesa" \
+  "intel"               "Intel - mesa + intel-media-driver" \
+  "nvidia"              "Nvidia - nvidia-open-dkms (Turing RTX 20xx and up as well as GTX 1650)" \
   "hybrid-nvidia-intel" "Hybrid: Intel iGPU + Nvidia dGPU (Turing+)" \
   "hybrid-nvidia-amd"   "Hybrid: AMD iGPU + Nvidia dGPU (Turing+)" \
-  "nvidia-legacy"       "Nvidia Legacy — (Maxwell GTX 9xx through Pascal GTX 10xx)" \
-  "none"                "Skip — install manually later") || die "Cancelled."
+  "nvidia-legacy"       "Nvidia Legacy - (Maxwell GTX 9xx through Pascal GTX 10xx) - 580xx-dkms - installed via AUR helper" \
+  "none"                "Skip . install manually later") || die "Cancelled."
 
 if [[ "$GPU_CHOICE" == nvidia* || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
   dialog --msgbox \
-    "Nvidia GPU notice:\n\nMake sure you selected the right option!\n\n  GTX 1650 / RTX 20xx and newer  → nvidia (open)\n  GTX 10xx / GTX 9xx → nvidia-legacy \n\n Kernel params configured automatically. \n\n Hyprland env vars after dotfile restore: \n  env = LIBVA_DRIVER_NAME,nvidia\n  env = __GLX_VENDOR_LIBRARY_NAME,nvidia\n  env = WLR_NO_HARDWARE_CURSORS,1\n  env = NVD_BACKEND,direct" \
-    20 68
+    "Nvidia GPU notice:\n\n\
+Detected:  ${GPU_DETECT_INFO}\n\
+Suggested: ${GPU_DEFAULT}\n\n\
+Driver selection guide:\n\
+  Turing RTX 20xx / GTX 1650 and newer → nvidia (open)\n\
+  Maxwell GTX 9xx through Volta        → nvidia-legacy (580xx-dkms, AUR)\n\
+  Kepler and older                     → select 'none', install manually\n\
+\n\
+Kernel params configured automatically.\n\
+Hyprland env vars (set in dotfiles):\n\
+  LIBVA_DRIVER_NAME=nvidia\n\
+  __GLX_VENDOR_LIBRARY_NAME=nvidia\n\
+  WLR_NO_HARDWARE_CURSORS=1\n\
+  NVD_BACKEND=direct" \
+  18 65
 fi
 
 
@@ -321,22 +367,22 @@ PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "vim"            "Vi editor (fallback)"         ON \
   "git"            "Version control"              ON  \
   "stow"           "Dotfile manager"              ON  \
-  "bat"            "Better cat"                   ON  \
+  "bat"            "nicer cat"                   ON  \
   "eza"            "Better ls"                    ON  \
   "tree"           "Directory tree"               ON  \
-  "bind"           "DNS utils (dig)"              ON  \
+  "bind"           "DNS utils"              ON  \
   "net-tools"      "Network tools (ifconfig etc)" ON  \
   "tldr"           "Simplified man pages"         ON  \
   "tmux"	   "Terminal Multiplexer"	  ON  ) || true
 
 PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 16 \
   "mpv"                      "Media player"                                 ON \
-  "imv"                      "Image viewer"                                 ON \   
+  "imv"                      "Image viewer"                                 ON \
   "ffmpeg"                   "Audio/video converter (needed by many tools)" ON \
-  "firefox"                  "Web browser"                                  OFF \
+  "firefox"                  "Web browser"                                  ON \
   "thunderbird"              "Email client"                                 OFF \
   "signal-desktop"           "Encrypted messenger"                          OFF \
-  "obsidian"                 "Markdown knowledge base"                      OFF \
+  "obsidian"                 "Markdown notes"                               OFF \
   "anki"                     "Flashcard app"                                OFF \
   "libreoffice-fresh"        "Office suite"                                 OFF \
   "obs-studio"               "Screen recording / streaming"                 OFF \
@@ -352,10 +398,7 @@ WEBAPPS=$(dialog --stdout --checklist "Web Apps" 22 72 8 \
   "zoom"        "Zoom"            OFF  \
   "whatsapp"    "WhatsApp Web"    OFF \
   "notion"      "Notion"          OFF \
-  "googlemeet"  "Google Meet"     OFF \
-  "protonmail"  "Proton Mail"     OFF \
-  "linear"      "Linear"          OFF \
-  "figma"       "Figma"           OFF) || true
+  "protonmail"  "Proton Mail"     OFF ) || true
 
 PKGS_SYSTEM=$(dialog --stdout --checklist "System and Security" 22 72 17 \
   "fprintd"                    "Fingerprint daemon (pulls libfprint)"  ON \
@@ -420,7 +463,7 @@ if [[ -n "$PKGS_AUR" ]]; then
   AUR_HELPER=$(dialog --stdout --radiolist \
     "AUR Helper\n\nRequired to install your selected AUR packages after first boot.\nbase-devel will be added automatically." \
     14 72 2 \
-    "paru" "Rust-based, shows PKGBUILD before install (recommended)" ON \
+    "paru" "Rust-based, shows PKGBUILD before install" ON \
     "yay"  "Go-based, most widely used"                              OFF) \
     || die "Cancelled."
 else
@@ -433,19 +476,20 @@ SB_SUMMARY="$(   $ENABLE_SECUREBOOT && echo "yes (Microsoft CA: $MICROSOFT_CA)" 
 AL_SUMMARY="$(   $ENABLE_AUTOLOGIN  && echo "yes"                                      || echo "no" )"
 
 dialog --title "Configuration Summary" --yesno \
-"Disk:        $DISK
-CPU/ucode:   $UCODE
-Username:    $USERNAME
-Hostname:    $HOSTNAME
-Locale:      $LOCALE
-Timezone:    $TIMEZONE
-Keymap:      $KEYMAP
-EFI size:    $EFI_SIZE
-GPU:         $GPU_CHOICE
-Swap:        $SWAP_SUMMARY
-Autologin:   $AL_SUMMARY
-SecureBoot:  $SB_SUMMARY
-AurHelper:   ${AUR_HELPER:-none}
+"Disk:            $DISK
+CPU/ucode:        $UCODE
+Username:         $USERNAME
+Hostname:         $HOSTNAME
+Locale:           $LOCALE
+Timezone:         $TIMEZONE
+Keymap:           $KEYMAP
+EFI size:         $EFI_SIZE
+Fallback-Kernel:  $ENABLE_LTS
+GPU:              $GPU_CHOICE
+Swap:             $SWAP_SUMMARY
+Autologin:        $AL_SUMMARY
+SecureBoot:       $SB_SUMMARY
+AurHelper:        ${AUR_HELPER:-none}
 
 WARNING: ALL DATA ON $DISK WILL BE ERASED.
 
@@ -487,7 +531,7 @@ ALL_PKGS=$(echo "$ALL_PKGS" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ' '
 clear
 
 # =============================================================================
-# PHASE 1 — partition, format, mount
+# PHASE 2 — partition, format, mount
 # =============================================================================
 info "Partitioning ${DISK}..."
 sgdisk --zap-all "$DISK"
@@ -548,7 +592,7 @@ fi
 
 
 # =============================================================================
-# PHASE 2 — pacstrap
+# PHASE 3 — pacstrap
 # =============================================================================
 
 # ── pacstrap part 1 ───────────────────────────────────────────────────────────
@@ -608,7 +652,12 @@ success "Locale/keymap + dracut i18n prepared."
 
 info "Running pacstrap (base system)..."
 # systemd-boot is part of systemd — already in base, bootctl is the installer tool
-pacstrap /mnt linux
+if $ENABLE_LTS; then
+  pacstrap /mnt linux linux-lts
+else
+  pacstrap /mnt linux
+fi
+
 
 info "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
@@ -630,12 +679,11 @@ else
 fi
 
 
-# ============================================================================
-# == PHASE 3 - CHROOT SCRIPT GEN =============================================
-# ============================================================================
 
-
-cat >  /mnt/root/chroot_setup.sh << 'CHROOT'
+# =============================================================================
+# PHASE 4 - CHROOT SCRIPT GEN
+# =============================================================================
+cat > /mnt/root/chroot_setup.sh << 'CHROOT'
 #!/usr/bin/env bash
 # chroot_setup.sh 
 # runs via arch-chroot in new system and gets variables passed by arch_setup.sh
@@ -655,7 +703,7 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 : "${USERNAME:?}" "${HOSTNAME:?}" "${TIMEZONE:?}" "${LOCALE:?}" "${KEYMAP:?}"
 : "${LUKS_UUID:?}" "${GPU_CHOICE:?}" "${ALL_PKGS:?}" "${AUR_HELPER:-}" "${WEBAPPS:-}"
 : "${ENABLE_AUTOLOGIN:?}" "${ENABLE_SWAP:?}" "${ENABLE_SECUREBOOT:?}" "${MICROSOFT_CA:?}"
-: "${PKGS_AUR:-}" "${DISK:?}"
+: "${ENABLE_LTS:?}" "${PKGS_AUR:-}" "${DISK:?}"
 
 # ── passwords ─────────────────────────────────────────────────────────────────
 echo "Set ROOT password:"
@@ -666,13 +714,12 @@ ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
 hwclock --systohc
 
 # ── locale ────────────────────────────────────────────────────────────────────
-# TODO redundant since happened before chroot?
+# set also before in chroot
 sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen
 locale-gen
 echo "LANG=${LOCALE}" > /etc/locale.conf
 
 # ── vconsole ──────────────────────────────────────────────────────────────────
-# TODO redundant 
 printf "KEYMAP=${KEYMAP}\n" > /etc/vconsole.conf
 
 # ── hostname ──────────────────────────────────────────────────────────────────
@@ -685,7 +732,7 @@ passwd "${USERNAME}" < /dev/tty
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 # ── autologin (optional) ──────────────────────────────────────────────────────
-if [[ "${ENABLE_AUTOLOGIN}" == "true" ]] ; then
+if $ENABLE_AUTOLOGIN ; then
   info "Configuring autologin..."
   mkdir -p /etc/systemd/system/getty@tty1.service.d
   cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << EOF
@@ -710,7 +757,7 @@ systemctl enable --no-reload fstrim.timer                  || die "fstrim.timer 
 
 
 # ── hibernate config (suspend-to-disk via swapfile) ───────────────────────────
-if [[ "${ENABLE_SWAP}" == "true" ]] ; then
+if $ENABLE_SWAP ; then
   info "Configuring hibernate..."
 
   # Override systemd sleep defaults to always hibernate, never suspend-to-RAM.
@@ -742,6 +789,7 @@ EOF
 fi
 
 # ── dracut hook scripts ───────────────────────────────────────────────────────
+# depending on active pkgbase chooses correct outfile in dracut-install or file to remove in dracut.remove
 mkdir -p /usr/local/bin /etc/pacman.d/hooks
 
 cat > /usr/local/bin/dracut-install.sh << 'EOF'
@@ -751,14 +799,30 @@ while read -r line; do
     if [[ "$line" == 'usr/lib/modules/'+([^/])'/pkgbase' ]]; then
         kver="${line#'usr/lib/modules/'}"
         kver="${kver%'/pkgbase'}"
-        dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
+        pkgbase=$(cat "/usr/lib/modules/${kver}/pkgbase")
+        if [[ "$pkgbase" == "linux-lts" ]]; then
+          dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64-lts.efi
+        else
+          dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
+        fi
     fi
 done
 EOF
 
 cat > /usr/local/bin/dracut-remove.sh << 'EOF'
 #!/usr/bin/env bash
-rm -f /boot/efi/EFI/Linux/bootx64.efi
+while read -r line; do
+    if [[ "$line" == 'usr/lib/modules/'+([^/])'/pkgbase' ]]; then
+        kver="${line#'usr/lib/modules/'}"
+        kver="${kver%'/pkgbase'}"
+        pkgbase=$(cat "/usr/lib/modules/${kver}/pkgbase")
+        if [[ "$pkgbase" == "linux-lts" ]]; then
+            rm -f /boot/efi/EFI/Linux/bootx64-lts.efi
+        else
+            rm -f /boot/efi/EFI/Linux/bootx64.efi
+        fi
+    fi
+done
 EOF
 
 chmod +x /usr/local/bin/dracut-install.sh /usr/local/bin/dracut-remove.sh
@@ -811,7 +875,6 @@ if [[ "$GPU_CHOICE" == nvidia || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
 add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "
 EOF
 
-#TODO double check nvidia
 # Wayland requires DRM modesetting; fbdev needed for early KMS
   sed -i 's/"$/ nvidia_drm.modeset=1 nvidia_drm.fbdev=1"/' /etc/dracut.conf.d/cmdline.conf
 
@@ -857,7 +920,6 @@ TIMELINE_LIMIT_MONTHLY="6"
 TIMELINE_LIMIT_YEARLY="2"
 EOF
 
-# TODO root or USER better?
 echo 'SNAPPER_CONFIGS="root"' > /etc/conf.d/snapper
 
 chmod 750 /.snapshots
@@ -867,7 +929,7 @@ pacman -S --noconfirm snap-pac
 
 systemctl enable --no-reload snapper-timeline.timer snapper-cleanup.timer
 
-# TODO description of files
+
 # ── post-LUKS snapshot menu — dracut module ───────────────────────────────────
 #
 # Three-hook / One-service design:
@@ -878,7 +940,6 @@ systemctl enable --no-reload snapper-timeline.timer snapper-cleanup.timer
 #   3.2 snapshot-rewrite.service -	
 #
 info "Installing snapshot menu dracut module..."
-REPO_RAW="https://raw.githubusercontent.com/RoProe/secure-arch-btrfs-snapper/refs/heads/main"
 mkdir -p /usr/lib/dracut/modules.d/99snapshot-menu
 
 cat >  /usr/lib/dracut/modules.d/99snapshot-menu/module-setup.sh << 'EOF'
@@ -1045,7 +1106,7 @@ done
 success "Snapshot menu module installed."
 
 # ── Secure Boot ───────────────────────────────────────────────────────────────
-if [[ "${ENABLE_SECUREBOOT}" == "true" ]]; then
+if $ENABLE_SECUREBOOT; then
   pacman -S --noconfirm sbctl
   sbctl create-keys
 
@@ -1071,20 +1132,46 @@ Description = Signing EFI binaries...
 When = PostTransaction
 Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64.efi
 EOF
-fi
 
+  # hook for lts
+  if $ENABLE_LTS; then
+    cat > /etc/pacman.d/hooks/zz-sbctl-lts.hook << 'EOF'
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = boot/*
+Target = usr/lib/modules/*/vmlinuz
+
+[Action]
+Description = Signing LTS EFI binary...
+When = PostTransaction
+Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64-lts.efi
+EOF
+  fi
+fi
 
 # ── generate UKI (triggers dracut hook) ───────────────────────────────────────
 # This reinstalls the linux package which fires 90-dracut-install.hook,
 # which calls dracut-install.sh, which runs dracut --uefi to produce bootx64.efi
 pacman -S --noconfirm linux
 
-# Initial sign — must happen after UKI exists, before reboot
-if [[ "$ENABLE_SECUREBOOT" == "true" ]] ; then
-  sbctl sign -s /boot/efi/EFI/Linux/bootx64.efi
+if $ENABLE_LTS; then
+  pacman -S --noconfirm linux-lts
 fi
 
-#TODO Variables correct?
+# Initial sign — must happen after UKI exists, before reboot
+if $ENABLE_SECUREBOOT; then
+  sbctl sign -s /boot/efi/EFI/Linux/bootx64.efi
+  if $ENABLE_LTS; then
+    sbctl sign -s /boot/efi/EFI/Linux/bootx64-lts.efi
+  fi
+fi
+
+if $ENABLE_LTS; then
+  efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux LTS" --loader '\EFI\Linux\bootx64-lts.efi'
+fi
 efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux" --loader '\EFI\Linux\bootx64.efi'
 
 # ── WebApps ───────────────────────────────────────────────────────────────────
@@ -1097,10 +1184,7 @@ if [[ -n "${WEBAPPS}" ]]; then
     ["zoom"]="https://app.zoom.us/wc"
     ["whatsapp"]="https://web.whatsapp.com"
     ["notion"]="https://notion.so"
-    ["googlemeet"]="https://meet.google.com"
     ["protonmail"]="https://mail.proton.me"
-    ["linear"]="https://linear.app"
-    ["figma"]="https://figma.com"
   )
 
   declare -A WEBAPP_NAMES=(
@@ -1108,10 +1192,7 @@ if [[ -n "${WEBAPPS}" ]]; then
     ["zoom"]="Zoom"
     ["whatsapp"]="WhatsApp"
     ["notion"]="Notion"
-    ["googlemeet"]="Google Meet"
     ["protonmail"]="Proton Mail"
-    ["linear"]="Linear"
-    ["figma"]="Figma"
   )
 
   declare -A WEBAPP_CATEGORIES=(
@@ -1119,10 +1200,7 @@ if [[ -n "${WEBAPPS}" ]]; then
     ["zoom"]="Network;VideoConference;"
     ["whatsapp"]="Network;InstantMessaging;"
     ["notion"]="Office;"
-    ["googlemeet"]="Network;VideoConference;"
     ["protonmail"]="Network;Email;"
-    ["linear"]="Office;"
-    ["figma"]="Graphics;"
   )
 
   for app in ${WEBAPPS}; do
@@ -1146,7 +1224,7 @@ EOF
   done
 fi
 
-#TODO include Nvidia legacy drivers if needed and add nvidia variables to hyprland
+#TODO add nvidia variables to hyprland
 # ── AUR setup ─────────────────────────────────────────────────────────────────
 if [[ -n "${PKGS_AUR:-}" ]] && [[ -n "${AUR_HELPER:-}" ]]; then
   echo "${PKGS_AUR}" | tr ' ' '\n' | grep -v '^$' > /home/${USERNAME}/aur-packages.txt
@@ -1220,11 +1298,11 @@ echo "║    umount -R /mnt                                        ║"
 echo "║    cryptsetup close ${LUKS_NAME}                        ║"
 echo "║    reboot                                                ║"
 echo "╠══════════════════════════════════════════════════════════╣"
-if [[ "${ENABLE_SECUREBOOT}" == "true" ]]; then
+if $ENABLE_SECUREBOOT; then
   echo "╠══════════════════════════════════════════════════════════╣"
   echo "║  After first boot — SecureBoot:                          ║"
   echo "║    1. Enable Setup Mode in BIOS                          ║"
-  if [[ "${MICROSOFT_CA}" == "true" ]]; then
+  if $MICROSOFT_CA; then
     echo "║    2. sbctl enroll-keys --microsoft                      ║"
   else
     echo "║    2. sbctl enroll-keys                                  ║"
@@ -1246,11 +1324,8 @@ if [[ ${#WARNINGS[@]} -gt 0 ]]; then
 fi
 CHROOT
 
-
-chmod +x  /mnt/root/chroot_setup.sh 
-
 # =============================================================================
-# PHASE 4 — enter chroot
+# PHASE 5 — enter chroot
 # =============================================================================
 success "Pre-chroot setup done. Entering chroot..."
 echo ""
@@ -1276,6 +1351,7 @@ arch-chroot /mnt env \
   WEBAPPS="$WEBAPPS" \
   AUR_HELPER="$AUR_HELPER" \
   DISK="$DISK" \
+  ENABLE_LTS="$ENABLE_LTS" \
   bash /root/chroot_setup.sh
 
 echo ""

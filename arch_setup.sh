@@ -4,7 +4,7 @@
 # inspired by: https://github.com/Ataraxxia/secure-arch (Btrfs adaptation with snapshots and custom snapshot menu after luks decryption and swap on LUKS partition for secure hibernate.)
 #
 # Boot flow:
-#   UEFI → systemd-boot (instant) → UKI → LUKS passphrase
+#   UEFI → UKI → LUKS passphrase
 #   → initramfs snapshot menu → [Enter] normal boot
 #                             → [s]     select snapshot → rollback boot
 #
@@ -31,14 +31,7 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 [[ $EUID -eq 0 ]]       || die "Run as root."
 [[ -d /sys/firmware/efi ]] || die "Not booted in UEFI mode."
 command -v dialog &>/dev/null || pacman -Sy --noconfirm dialog
-
-
-
-# =============================================================================
-# PHASE 0 — SYSTEM CHECKS
-# =============================================================================
-#TODO check UEFI mode
-
+[[ "$(free -m | awk '/^Mem:/{print $2}')" -lt 512 ]] && die "Not enough RAM, need 512MB+."
 
 # =============================================================================
 # PHASE 1 — TUI CONFIGURATION
@@ -46,7 +39,7 @@ command -v dialog &>/dev/null || pacman -Sy --noconfirm dialog
 
 clear
 dialog --title "Arch Linux Installer" --msgbox \
-"LUKS2 + Btrfs + systemd-boot + Snapshot Menu + SecureBoot\n\nBoot flow after install:\n  UEFI → systemd-boot → LUKS passphrase\n  → snapshot menu (5s timeout) → boot\n\nPress OK to begin." 14 62
+"LUKS2 + Btrfs + systemd-boot + Snapshot Menu + SecureBoot\n\nBoot flow after install:\n  UEFI → UKI → LUKS passphrase\n  → snapshot menu  → boot\n\nPress OK to begin." 14 62
 
 # ── disk ──────────────────────────────────────────────────────────────────────
 DISK_ENTRIES=()
@@ -59,6 +52,9 @@ done < <(lsblk -d -o NAME,SIZE,MODEL | grep -v 'NAME\|loop')
 
 DISK=$(dialog --stdout --menu "Select target disk" 22 72 6 "${DISK_ENTRIES[@]}") \
   || die "No disk selected."
+
+DISK_SIZE_GB=$(lsblk -b -d -o SIZE "$DISK" | tail -1 | awk '{print int($1/1024/1024/1024)}')
+[[ "$DISK_SIZE_GB" -lt 20 ]] && die "Disk too small (${DISK_SIZE_GB}GB, need 20GB+)."
 
 # ── CPU auto-detect ───────────────────────────────────────────────────────────
 CPU_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}')
@@ -210,44 +206,80 @@ fi
 ENABLE_SECUREBOOT=false
 MICROSOFT_CA=false
 
-if dialog --yesno "Set up SecureBoot with sbctl?" 8 72; then
+SB_SETUP_MODE=$(cat /sys/firmware/efi/efivars/SetupMode-* 2>/dev/null \
+  | xxd | awk 'END{print $NF}' || echo "unknown")
+SB_CURRENT=$(cat /sys/firmware/efi/efivars/SecureBoot-* \
+  | xxd | awk 'END{print $NF}' 2>/dev/null || echo "unknown")
+
+if [[ "$SB_SETUP_MODE" == "unknown" ]]; then
+  dialog --msgbox "SecureBoot not available.\nSkipping." 7 50
+elif dialog --yesno \
+  "Set up SecureBoot with sbctl?\n\
+\n\
+System status:\n\
+  Setup Mode:   $( [[ "$SB_SETUP_MODE" == "01" ]] && echo "Good - available" || echo "NOT available - enable in BIOS first" )\n\
+  Secure Boot:  $( [[ "$SB_CURRENT"    == "01" ]] && echo "currently ENABLED - disable in BIOS first!" || echo "Good - currently disabled" )\n\
+\n\
+REQUIREMENTS:\n\
+- Secure Boot must be DISABLED in BIOS right now\n\
+- BIOS must support Setup Mode (custom keys)" \
+  16 62; then
   ENABLE_SECUREBOOT=true
   if dialog --yesno \
-    "Include Microsoft CA?\n\n(Required for dual-boot with Windows or\nhardware needing Microsoft-signed drivers\n WARNING: Only enable if you know what you are doing!\n CAN BRICK SYSTEM)" \
-    10 72; then
+    "Include Microsoft CA?\n\nRequired for dual-boot with Windows.\nWARNING: CAN BRICK SYSTEM on some hardware." \
+    10 62; then
     MICROSOFT_CA=true
   fi
 fi
 
-#TODO maybe legacy gpu auto detection via lspci -k -d ::03xx
+
 # ── GPU auto-detection ────────────────────────────────────────────────────────
 GPU_INFO=$(lspci | grep -E "VGA|3D|Display" || echo "")
+GPU_PCI_ID=$(lspci -nn | grep -E "VGA|3D|Display" | grep -i nvidia | grep -oP '\[10de:\K[0-9a-f]+' | head -1 || echo "")
 HAS_NVIDIA=$(echo "$GPU_INFO" | grep -qi "nvidia"                    && echo true || echo false)
 HAS_AMD=$(echo "$GPU_INFO"    | grep -qi "amd\|radeon\|advanced micro" && echo true || echo false)
 HAS_INTEL=$(echo "$GPU_INFO"  | grep -qi "intel"                     && echo true || echo false)
 
+
+
 if   $HAS_NVIDIA && $HAS_INTEL; then GPU_DEFAULT="hybrid-nvidia-intel"
 elif $HAS_NVIDIA && $HAS_AMD;   then GPU_DEFAULT="hybrid-nvidia-amd"
-elif $HAS_NVIDIA;               then GPU_DEFAULT="nvidia"
+elif $HAS_NVIDIA; then
+  [[ -n "$GPU_PCI_ID" && $((16#${GPU_PCI_ID})) -lt $((16#1e04)) ]] && GPU_DEFAULT="nvidia-legacy" || GPU_DEFAULT="nvidia"
 elif $HAS_AMD;                  then GPU_DEFAULT="amd"
 elif $HAS_INTEL;                then GPU_DEFAULT="intel"
 else                                 GPU_DEFAULT="none"
 fi
 
+[[ -n "$GPU_PCI_ID" ]] && GPU_DETECT_INFO="${GPU_INFO} [10de:${GPU_PCI_ID}]" || GPU_DETECT_INFO="${GPU_INFO:-none}"
+
 GPU_CHOICE=$(dialog --stdout --menu \
-  "GPU Driver\n\nDetected: ${GPU_INFO:-none}\nSuggested: ${GPU_DEFAULT}" 22 72 7 \
-  "amd"                 "AMD — vulkan-radeon + mesa" \
-  "intel"               "Intel — mesa + intel-media-driver" \
-  "nvidia"              "Nvidia — nvidia-open-dkms (Turing RTX 20xx and up as well as GTX 1650)" \
+  "GPU Driver\n\nDetected: ${GPU_DETECT_INFO}\nSuggested: ${GPU_DEFAULT}" 22 72 7 \
+  "amd"                 "AMD - vulkan-radeon + mesa" \
+  "intel"               "Intel - mesa + intel-media-driver" \
+  "nvidia"              "Nvidia - nvidia-open-dkms (Turing RTX 20xx and up as well as GTX 1650)" \
   "hybrid-nvidia-intel" "Hybrid: Intel iGPU + Nvidia dGPU (Turing+)" \
   "hybrid-nvidia-amd"   "Hybrid: AMD iGPU + Nvidia dGPU (Turing+)" \
-  "nvidia-legacy"       "Nvidia Legacy — (Maxwell GTX 9xx through Pascal GTX 10xx)" \
-  "none"                "Skip — install manually later") || die "Cancelled."
+  "nvidia-legacy"       "Nvidia Legacy - (Maxwell GTX 9xx through Pascal GTX 10xx) - 580xx-dkms - installed via AUR helper" \
+  "none"                "Skip . install manually later") || die "Cancelled."
 
-if [[ "$GPU_CHOICE" == nvidia || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
+if [[ "$GPU_CHOICE" == nvidia* || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
   dialog --msgbox \
-    "Nvidia GPU notice:\n\nMake sure you selected the right option!\n\n  GTX 1650 / RTX 20xx and newer  → nvidia (open)\n  GTX 10xx / GTX 9xx → nvidia-legacy \n\n Kernel params configured automatically. \n\n Hyprland env vars after dotfile restore: \n  env = LIBVA_DRIVER_NAME,nvidia\n  env = __GLX_VENDOR_LIBRARY_NAME,nvidia\n  env = WLR_NO_HARDWARE_CURSORS,1\n  env = NVD_BACKEND,direct" \
-    20 68
+    "Nvidia GPU notice:\n\n\
+Detected:  ${GPU_DETECT_INFO}\n\
+Suggested: ${GPU_DEFAULT}\n\n\
+Driver selection guide:\n\
+  Turing RTX 20xx / GTX 1650 and newer → nvidia (open)\n\
+  Maxwell GTX 9xx through Volta        → nvidia-legacy (580xx-dkms, AUR)\n\
+  Kepler and older                     → select 'none', install manually\n\
+\n\
+Kernel params configured automatically.\n\
+Hyprland env vars (set in dotfiles):\n\
+  LIBVA_DRIVER_NAME=nvidia\n\
+  __GLX_VENDOR_LIBRARY_NAME=nvidia\n\
+  WLR_NO_HARDWARE_CURSORS=1\n\
+  NVD_BACKEND=direct" \
+  18 65
 fi
 
 
@@ -332,38 +364,38 @@ PKGS_FILES=$(dialog --stdout --checklist "File management" 22 72 16 \
 
 PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "neovim"         "Modern vim"                   ON  \
-  "vim"            "Vi editor (fallback)"         OFF \
+  "vim"            "Vi editor (fallback)"         ON \
   "git"            "Version control"              ON  \
   "stow"           "Dotfile manager"              ON  \
-  "bat"            "Better cat"                   ON  \
+  "bat"            "nicer cat"                   ON  \
   "eza"            "Better ls"                    ON  \
   "tree"           "Directory tree"               ON  \
-  "bind"           "DNS utils (dig)"              ON  \
+  "bind"           "DNS utils"              ON  \
   "net-tools"      "Network tools (ifconfig etc)" ON  \
   "tldr"           "Simplified man pages"         ON  \
   "tmux"	   "Terminal Multiplexer"	  ON  ) || true
 
 PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 16 \
-  "firefox"                  "Web browser"                                  OFF \
-  "thunderbird"              "Email client"                                 OFF \
-  "signal-desktop"           "Encrypted messenger"                          OFF \
-  "obsidian"                 "Markdown knowledge base"                      OFF \
-  "anki"                     "Flashcard app"                                OFF \
-  "libreoffice-fresh"        "Office suite"                                 OFF \
   "mpv"                      "Media player"                                 ON \
   "imv"                      "Image viewer"                                 ON \
+  "ffmpeg"                   "Audio/video converter (needed by many tools)" ON \
+  "firefox"                  "Web browser"                                  ON \
+  "thunderbird"              "Email client"                                 OFF \
+  "signal-desktop"           "Encrypted messenger"                          OFF \
+  "obsidian"                 "Markdown notes"                               OFF \
+  "anki"                     "Flashcard app"                                OFF \
+  "libreoffice-fresh"        "Office suite"                                 OFF \
   "obs-studio"               "Screen recording / streaming"                 OFF \
   "rpi-imager"               "Raspberry Pi Imager"                          OFF \
-  "btop"                     "Resource monitor"                             ON \
+  "btop"                     "Resource monitor"                             OFF \
   "texlive-basic"            "LaTeX base"                                   OFF \
   "texlive-latexrecommended" "LaTeX recommended packages"                   OFF \
   "texlive-fontsrecommended" "LaTeX recommended fonts"                      OFF \
-  "texstudio"                "LaTeX editor"                                 OFF \
-  "ffmpeg"                   "Audio/video converter (needed by many tools)" ON ) || true
+  "texstudio"                "LaTeX editor"                                 OFF ) || true
 
 WEBAPPS=$(dialog --stdout --checklist "Web Apps" 22 72 8 \
-  "github"      "GitHub"          ON  \
-  "zoom"        "Zoom"            ON  \
+  "github"      "GitHub"          OFF  \
+  "zoom"        "Zoom"            OFF  \
   "whatsapp"    "WhatsApp Web"    OFF \
   "notion"      "Notion"          OFF \
   "googlemeet"  "Google Meet"     OFF \
@@ -434,7 +466,7 @@ if [[ -n "$PKGS_AUR" ]]; then
   AUR_HELPER=$(dialog --stdout --radiolist \
     "AUR Helper\n\nRequired to install your selected AUR packages after first boot.\nbase-devel will be added automatically." \
     14 72 2 \
-    "paru" "Rust-based, shows PKGBUILD before install (recommended)" ON \
+    "paru" "Rust-based, shows PKGBUILD before install" ON \
     "yay"  "Go-based, most widely used"                              OFF) \
     || die "Cancelled."
 else
@@ -623,7 +655,7 @@ success "Locale/keymap + dracut i18n prepared."
 
 info "Running pacstrap (base system)..."
 # systemd-boot is part of systemd — already in base, bootctl is the installer tool
-if [[ "$ENABLE_LTS" == "true" ]]; then
+if $ENABLE_LTS; then
   pacstrap /mnt linux linux-lts
 else
   pacstrap /mnt linux
@@ -692,7 +724,7 @@ arch-chroot /mnt env \
   WEBAPPS="$WEBAPPS" \
   AUR_HELPER="$AUR_HELPER" \
   DISK="$DISK" \
-  ENABLE_LTS="$ENABLE_LTS"\
+  ENABLE_LTS="$ENABLE_LTS" \
   bash /root/chroot_setup.sh
 
 echo ""
