@@ -164,7 +164,7 @@ while true; do
 done
 
 # ── Fallback Kernel ───────────────────────────────────────────────────────────
-ENABLE_LTS=False
+ENABLE_LTS=false
 if dialog --yesno "Install LTS Fallback-Kernel?\n\n usefull if main kernel breaks \n +320MB EFI-Size \n recommended \n select it in BIOS menu" 10 58; then
     ENABLE_LTS=true
 fi
