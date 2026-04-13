@@ -17,7 +17,7 @@ die()     { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 : "${USERNAME:?}" "${HOSTNAME:?}" "${TIMEZONE:?}" "${LOCALE:?}" "${KEYMAP:?}"
 : "${LUKS_UUID:?}" "${GPU_CHOICE:?}" "${ALL_PKGS:?}" "${AUR_HELPER:-}" "${WEBAPPS:-}"
 : "${ENABLE_AUTOLOGIN:?}" "${ENABLE_SWAP:?}" "${ENABLE_SECUREBOOT:?}" "${MICROSOFT_CA:?}"
-: "${PKGS_AUR:-}" "${DISK:?}"
+: "${ENABLE_LTS:?}" "${PKGS_AUR:-}" "${DISK:?}"
 
 # ── passwords ─────────────────────────────────────────────────────────────────
 echo "Set ROOT password:"
@@ -104,6 +104,7 @@ EOF
 fi
 
 # ── dracut hook scripts ───────────────────────────────────────────────────────
+# depending on active pkgbase chooses correct outfile in dracut-install or file to remove in dracut.remove
 mkdir -p /usr/local/bin /etc/pacman.d/hooks
 
 cat > /usr/local/bin/dracut-install.sh << 'EOF'
@@ -113,6 +114,12 @@ while read -r line; do
     if [[ "$line" == 'usr/lib/modules/'+([^/])'/pkgbase' ]]; then
         kver="${line#'usr/lib/modules/'}"
         kver="${kver%'/pkgbase'}"
+        pkgbase=$(cat "/usr/lib/modules/${kver}/pkgbase")
+        if [[ "$pkgbase" == "linux-lts" ]]; then
+            outfile="/boot/efi/EFI/Linux/bootx64-lts.efi"
+        else
+            outfile="/boot/efi/EFI/Linux/bootx64.efi"
+        fi
         dracut --force --uefi --kver "$kver" /boot/efi/EFI/Linux/bootx64.efi
     fi
 done
@@ -120,7 +127,18 @@ EOF
 
 cat > /usr/local/bin/dracut-remove.sh << 'EOF'
 #!/usr/bin/env bash
-rm -f /boot/efi/EFI/Linux/bootx64.efi
+while read -r line; do
+    if [[ "$line" == 'usr/lib/modules/'+([^/])'/pkgbase' ]]; then
+        kver="${line#'usr/lib/modules/'}"
+        kver="${kver%'/pkgbase'}"
+        pkgbase=$(cat "/usr/lib/modules/${kver}/pkgbase")
+        if [[ "$pkgbase" == "linux-lts" ]]; then
+            rm -f /boot/efi/EFI/Linux/bootx64-lts.efi
+        else
+            rm -f /boot/efi/EFI/Linux/bootx64.efi
+        fi
+    fi
+done
 EOF
 
 chmod +x /usr/local/bin/dracut-install.sh /usr/local/bin/dracut-remove.sh
@@ -278,18 +296,45 @@ Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64.efi
 EOF
 fi
 
+# hook for lts
+  if [[ "${ENABLE_LTS}" == "true" ]]; then
+    cat > /etc/pacman.d/hooks/zz-sbctl-lts.hook << 'EOF'
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = boot/*
+Target = usr/lib/modules/*/vmlinuz
+
+[Action]
+Description = Signing LTS EFI binary...
+When = PostTransaction
+Exec = /usr/bin/sbctl sign /boot/efi/EFI/Linux/bootx64-lts.efi
+EOF
+  fi
+
 
 # ── generate UKI (triggers dracut hook) ───────────────────────────────────────
 # This reinstalls the linux package which fires 90-dracut-install.hook,
 # which calls dracut-install.sh, which runs dracut --uefi to produce bootx64.efi
 pacman -S --noconfirm linux
 
+if [[ "${ENABLE_LTS}" == "true" ]]; then
+  pacman -S --noconfirm linux-lts
+fi
+
 # Initial sign — must happen after UKI exists, before reboot
 if [[ "$ENABLE_SECUREBOOT" == "true" ]] ; then
   sbctl sign -s /boot/efi/EFI/Linux/bootx64.efi
+  if [[ "${ENABLE_LTS}" == "true" ]]; then
+    sbctl sign -s /boot/efi/EFI/Linux/bootx64-lts.efi
+  fi
 fi
 
-#TODO Variables correct?
+if [[ "${ENABLE_LTS}" == "true" ]]; then
+  efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux LTS" --loader '\EFI\Linux\bootx64-lts.efi'
+fi
 efibootmgr --create --disk "${DISK}" --part 1 --label "Arch Linux" --loader '\EFI\Linux\bootx64.efi'
 
 # ── WebApps ───────────────────────────────────────────────────────────────────

@@ -149,7 +149,7 @@ done
 
 # ── EFI size ──────────────────────────────────────────────────────────────────
 while true; do
-  EFI_SIZE=$(dialog --stdout --inputbox "EFI partition size" 8 50 "${EFI_SIZE:-1024MiB}") || die "Cancelled."
+  EFI_SIZE=$(dialog --stdout --inputbox "EFI partition size" 8 50 "${EFI_SIZE:-2048MiB}") || die "Cancelled."
   if [[ ! "$EFI_SIZE" =~ ^[0-9]+(MiB|GiB)$ ]]; then
     dialog --msgbox "Invalid format.\n\nUse e.g. 512MiB or 1GiB." 8 45
     continue
@@ -157,11 +157,17 @@ while true; do
   efi_mib=$(echo "$EFI_SIZE" | grep -oP '^\d+')
   [[ "$EFI_SIZE" =~ GiB ]] && efi_mib=$(( efi_mib * 1024 ))
   if [[ "$efi_mib" -lt 512 ]]; then
-    dialog --msgbox "EFI too small (${EFI_SIZE}).\n\nMinimum: 512MiB\nRecommended: 1024MiB" 9 45
+    dialog --msgbox "EFI too small (${EFI_SIZE}).\n\nMinimum: 512MiB\nRecommended: 1024 with one UKI, 2048MiB with more UKIs / fallbacks" 9 45
     continue
   fi
   break
 done
+
+# ── Fallback Kernel ───────────────────────────────────────────────────────────
+ENABLE_LTS=False
+if dialog --yesno "Install LTS Fallback-Kernel?\n\n usefull if main kernel breaks \n +320MB EFI-Size \n recommended \n select it in BIOS menu" 10 58; then
+    ENABLE_LTS=true
+fi
 
 # ── swap / hibernate ──────────────────────────────────────────────────────────
 ENABLE_SWAP=false
@@ -441,19 +447,20 @@ SB_SUMMARY="$(   $ENABLE_SECUREBOOT && echo "yes (Microsoft CA: $MICROSOFT_CA)" 
 AL_SUMMARY="$(   $ENABLE_AUTOLOGIN  && echo "yes"                                      || echo "no" )"
 
 dialog --title "Configuration Summary" --yesno \
-"Disk:        $DISK
-CPU/ucode:   $UCODE
-Username:    $USERNAME
-Hostname:    $HOSTNAME
-Locale:      $LOCALE
-Timezone:    $TIMEZONE
-Keymap:      $KEYMAP
-EFI size:    $EFI_SIZE
-GPU:         $GPU_CHOICE
-Swap:        $SWAP_SUMMARY
-Autologin:   $AL_SUMMARY
-SecureBoot:  $SB_SUMMARY
-AurHelper:   ${AUR_HELPER:-none}
+"Disk:            $DISK
+CPU/ucode:        $UCODE
+Username:         $USERNAME
+Hostname:         $HOSTNAME
+Locale:           $LOCALE
+Timezone:         $TIMEZONE
+Keymap:           $KEYMAP
+EFI size:         $EFI_SIZE
+Fallback-Kernel:  $ENABLE_LTS
+GPU:              $GPU_CHOICE
+Swap:             $SWAP_SUMMARY
+Autologin:        $AL_SUMMARY
+SecureBoot:       $SB_SUMMARY
+AurHelper:        ${AUR_HELPER:-none}
 
 WARNING: ALL DATA ON $DISK WILL BE ERASED.
 
@@ -616,7 +623,12 @@ success "Locale/keymap + dracut i18n prepared."
 
 info "Running pacstrap (base system)..."
 # systemd-boot is part of systemd — already in base, bootctl is the installer tool
-pacstrap /mnt linux
+if [[ "$ENABLE_LTS" == "true" ]]; then
+  pacstrap /mnt linux linux-lts
+else
+  pacstrap /mnt linux
+fi
+
 
 info "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
@@ -680,6 +692,7 @@ arch-chroot /mnt env \
   WEBAPPS="$WEBAPPS" \
   AUR_HELPER="$AUR_HELPER" \
   DISK="$DISK" \
+  ENABLE_LTS="$ENABLE_LTS"\
   bash /root/chroot_setup.sh
 
 echo ""
