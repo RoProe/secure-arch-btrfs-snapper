@@ -29,7 +29,7 @@ while IFS= read -r info; do
   desc="$(xml_tag description "$info")"
   [ -n "$desc" ] || desc="—"
 
-  date="$(xml_tag date "$info" | awk '{print $1}')"
+  snap_date="$(xml_tag date "$info" | awk '{print $1}')"
   stype="$(xml_tag type "$info")"
 
   case "$stype" in
@@ -40,7 +40,7 @@ while IFS= read -r info; do
   esac
 
   SNAP_IDS+=("$num")
-  SNAP_LABELS+=("${color}${date} [${stype}] ${desc}\033[0m")
+  SNAP_LABELS+=("${color}${snap_date} [${stype}] ${desc}\033[0m")
 
 done < <(
   find "$BTRFS_MNT/@snapshots" -name "info.xml" 2>/dev/null \
@@ -154,8 +154,12 @@ while true; do
     echo "Auto boot disabled. Press Enter or q for boot selection"
   fi
 
-  read -rsn1 -t 1 key || continue
-  user_interacted=1 #deactivate countdown
+  if read -rsn1 -t 1 key; then
+    user_interacted=1
+  else
+    continue
+  fi
+
   if [[ $key == $'\x1b' ]]; then
     if read -rsn2 -t 0.1 key; then
       case "$key" in
