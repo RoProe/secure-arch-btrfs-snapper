@@ -87,13 +87,13 @@ apply_filter() {
   FILTERED_IDS=()
   local term="${filter,,}"
   for i in "${!SNAP_IDS[@]}"; do
-    local haystack="${SNAP_SEARCH[$i],,}"
-    if [[ -z "$term" || "$haystack" == *"$term"* ]]; then
+    local search_text="${SNAP_SEARCH[$i],,}"
+    if [[ -z "$term" || "$search_text" == *"$term"* ]]; then
       FILTERED_IDS+=("$i")
     fi
   done
   # reset selected
-  (( selected >= ${#FILTERED_IDS[@]} )) && selected=0
+  selected=0
 }
 
 apply_filter
@@ -145,10 +145,11 @@ draw_menu() {
 
     # visible region
     for (( i=viewport_start; i<=viewport_end; i++ )); do
+      local idx="${FILTERED_IDS[$i]}"
       if [[ $i -eq $selected ]]; then
-        echo -e " > \033[1;37;44m ${SNAP_LABELS[$i]} \033[0m"
+        echo -e " > \033[1;37;44m ${SNAP_LABELS[$idx]} \033[0m"
       else
-        echo -e "   ${SNAP_LABELS[$i]}"
+        echo -e "   ${SNAP_LABELS[$idx]}"
       fi
     done
 
@@ -172,6 +173,7 @@ draw_menu() {
   fi
 }
 
+#TODO pre - snapshot menu
 while true; do
   draw_menu
 
@@ -236,7 +238,7 @@ while true; do
           "[A") ((selected--)) ;;
           "[B") ((selected++)) ;;
           "[H") selected=0 ;;
-          "[F") selected=$((${#SNAP_IDS[@]} - 1)) ;;
+          "[F") selected=$((${#FILTERED_IDS[@]} - 1)) ;;
         esac
       else
         if [[ -n "$filter" ]]; then
@@ -267,10 +269,16 @@ while true; do
       CHOICE=0
       break
     fi
+    
+    total=${#FILTERED_IDS[@]}
 
-    local max=$(( ${#FILTERED_IDS[@]} - 1 ))
-    ((selected < 0)) && selected=0
-    (( max >= 0 && selected > max )) && selected=$max
+    if (( total == 0 )); then
+      selected=0
+    else
+      max=$((total - 1))
+      (( selected < 0 )) && selected=0
+      (( selected > max )) && selected=$max
+    fi
   fi
 done
 
