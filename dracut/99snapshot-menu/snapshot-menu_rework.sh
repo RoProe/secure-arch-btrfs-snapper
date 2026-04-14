@@ -99,6 +99,45 @@ apply_filter() {
 apply_filter
 
 
+# ============= First MENU =========================================
+pre_menu() {
+  local timeout=5
+  local start=$(date +%s)
+
+  while true; do
+    echo -ne "\033[2J\033[H"
+    echo "┌──────────────────────────────────────────────┐"
+    echo "│                 Boot Menu                    │"
+    echo "├──────────────────────────────────────────────┤"
+    echo "│           normal boot   (Enter/q)            │"
+    echo "│           snapshot menu   (s)                │"
+    echo "└──────────────────────────────────────────────┘"
+    echo ""
+
+    local now=$(date +%s)
+    local elapsed=$((now - start))
+    local remaining=$((timeout - elapsed))
+
+    if (( remaining <= 0 )); then
+      return 0  # normal boot
+    fi
+
+    echo "Auto boot in ${remaining}s..."
+
+    if read -rsn1 -t 1 key; then
+      case "$key" in
+        $'\n'|$'\r'|"q")
+          return 0
+          ;;
+        "s")
+          return 1
+          ;;
+      esac
+    fi
+  done
+}
+
+# ============== Snapshot Menu ===========================================
 draw_menu() {
   echo -ne "\033[2J\033[H"
 
@@ -173,7 +212,12 @@ draw_menu() {
   fi
 }
 
-#TODO pre - snapshot menu
+# --- Pre Menu ---
+if pre_menu; then
+  echo "booting normally..."
+  return 0
+fi
+
 while true; do
   draw_menu
 
