@@ -104,19 +104,27 @@ pre_menu() {
   local timeout=5
   local start=$(date +%s)
 
+  local options=("normal (b)oot" "(s)napshot menu")
+  local selected=0
+
   while true; do
     echo -ne "\033[2J\033[H"
     echo "┌──────────────────────────────────────────────┐"
     echo "│                 Boot Menu                    │"
     echo "├──────────────────────────────────────────────┤"
-    echo "│           normal boot   (Enter/q)            │"
-    echo "│           snapshot menu   (s)                │"
+    for i in "${!options[@]}"; do
+      if (( i == selected )); then
+        echo -e "> \033[1;37;44m ${options[$i]} \033[0m"
+      else
+        echo "  ${options[$i]}"
+      fi
+    done
+
     echo "└──────────────────────────────────────────────┘"
     echo ""
 
     local now=$(date +%s)
-    local elapsed=$((now - start))
-    local remaining=$((timeout - elapsed))
+    local remaining=$((timeout - (now - start)))
 
     if (( remaining <= 0 )); then
       return 0  # normal boot
@@ -124,17 +132,44 @@ pre_menu() {
 
     echo "Auto boot in ${remaining}s..."
 
+    
     if read -rsn1 -t 1 key; then
       case "$key" in
-        $'\n'|$'\r'|"q")
-          return 0
+        $'\x1b')
+          read -rsn2 -t 0.1 key
+          case "$key" in
+            "[A") ((selected--)) ;;
+            "[B") ((selected++)) ;;
+          esac
           ;;
+        "k") ((selected--)) ;;
+        "j") ((selected++)) ;;
+
+        $'\n'|$'\r')
+          return "$selected"
+          ;;
+
+        "b")
+          selected=0
+          break
+          ;;
+
         "s")
-          return 1
+          selected=1
+          break
           ;;
       esac
     fi
+        # clamp
+    (( selected < 0 )) && selected=0
+    (( selected > 1 )) && selected=1
   done
+
+  if (( selected == 0 )); then
+    return 0   # normal boot
+  else
+    return 1   # snapshot menu
+  fi
 }
 
 # ============== Snapshot Menu ===========================================
@@ -155,7 +190,7 @@ draw_menu() {
   echo "│           Boot / Snapshot Menu               │"
   echo "├──────────────────────────────────────────────┤"
   echo "│ ↑ ↓  /  w s  /  j k  =  navigate             │"
-  echo "│ Enter = boot selection   q = normal boot     │"
+  echo "│ Enter = snapshot select   b/q = normal boot  │"
   echo "│ g = top   G = bottom                         │"
   echo "├──────────────────────────────────────────────┤"
   printf "│ Search: %-38s│\n" "$search_display"
@@ -309,7 +344,7 @@ while true; do
         break
       fi
 
-    elif [[ "$key" == "q" ]]; then
+    elif [[ "$key" == "b" || "$key" == "q" ]]; then
       CHOICE=0
       break
     fi
