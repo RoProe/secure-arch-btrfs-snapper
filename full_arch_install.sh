@@ -5,8 +5,9 @@
 #
 # Boot flow:
 #   UEFI → UKI → LUKS passphrase
-#   → initramfs snapshot menu → [Enter] normal boot
-#                             → [s]     select snapshot → rollback boot
+#   → initramfs snapshot menu → [Enter / b] normal boot
+#                             → [s]     open snapshot menu → rollback boot
+#   snapshot menu can also navigated via arrow keys or vim-style j/k
 #
 # USAGE:
 #   1. Boot Arch Linux ISO
