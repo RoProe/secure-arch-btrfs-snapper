@@ -1594,6 +1594,9 @@ echo "      source = ~/.config/hypr/nvidia.conf"
 EOF
 fi
 
+#TODO fetch dotfiles from repo, set up zsh with highlighting, fuzzyfind, basic rice, QOL features
+
+
 # add infos and zsh
 cat >> /home/${USERNAME}/post-install.sh << 'EOF'
 info "Setting zsh as default shell..."
@@ -1631,6 +1634,14 @@ if $ENABLE_SECUREBOOT; then
     echo "║    2. sbctl enroll-keys                                  ║"
   fi
   echo "║    3. Reboot, enable UEFI Secure Boot, set BIOS password ║"
+  echo "╠══════════════════════════════════════════════════════════╣"
+
+fi
+if $HAS_NVIDIA; then
+  echo "╠══════════════════════════════════════════════════════════╣"
+  echo "║    4. Add the following to ~/.config/hypr/hyprland.conf: ║"
+  echo "║    -->     source = ~/.config/hypr/nvidia.conf           ║"
+  echo "╠══════════════════════════════════════════════════════════╣"
 fi
 echo "║  Then log in as ${USERNAME} and run:                    ║"
 echo "║    bash ~/post-install.sh                                ║"
