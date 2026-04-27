@@ -7,7 +7,7 @@ DONE_FLAG="/run/snapshot-menu-done"
 [ -f "$DONE_FLAG" ] && return 0
 
 mkdir -p "$BTRFS_MNT"
-if ! mount -o subvolid=5 "$BTRFS_DEV" "$BTRFS_MNT" 2>/dev/null; then
+if ! mount -o ro,subvolid=5 "$BTRFS_DEV" "$BTRFS_MNT" 2>/dev/null; then
   return 0
 fi
 touch "$DONE_FLAG"

@@ -1,7 +1,7 @@
 [Unit]
 Description=Snapshot sysroot.mount rewrite
 DefaultDependencies=no
-After=dracut-pre-mount.service
+After=initrd-root-device.target
 Before=sysroot.mount
 ConditionPathExists=/run/rootflags-override
 
