@@ -173,7 +173,7 @@ EOF
 mkdir -p /etc/dracut.conf.d
 
 cat > /etc/dracut.conf.d/cmdline.conf << EOF
-kernel_cmdline="rd.luks.uuid=luks-${LUKS_UUID} rd.luks.name=${LUKS_UUID}=cryptroot root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=rw,noatime,compress=zstd,subvol=@${RESUME_ARGS}"
+kernel_cmdline="rd.luks.name=${LUKS_UUID}=cryptroot root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=rw,noatime,compress=zstd,subvol=@${RESUME_ARGS}"
 EOF
 
 cat > /etc/dracut.conf.d/flags.conf << 'EOF'
