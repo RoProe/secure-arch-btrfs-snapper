@@ -374,8 +374,8 @@ if [[ -n "${WEBAPPS}" ]]; then
     [[ -z "${WEBAPP_URLS[$app]:-}" ]] && continue
     PROFILE_DIR="/home/${USERNAME}/.mozilla/firefox/webapps/${app}"
     mkdir -p "$PROFILE_DIR"
-    sudo -u "${USERNAME}" mkdir -p "$PROFILE_DIR"
-    sudo -u "${USERNAME}" tee "${DESKTOP_DIR}/${app}-webapp.desktop" > /dev/null << EOF
+    mkdir -p "$PROFILE_DIR"
+    tee "${DESKTOP_DIR}/${app}-webapp.desktop" > /dev/null << EOF
 [Desktop Entry]
 Name=${WEBAPP_NAMES[$app]}
 Exec=firefox --profile ${PROFILE_DIR} --new-window ${WEBAPP_URLS[$app]}
