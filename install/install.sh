@@ -178,7 +178,7 @@ if dialog --yesno \
   while true; do
     SWAP_SIZE_GIB=$(dialog --stdout --inputbox \
       "Swapfile size in GiB\n(Recommended: ${RAM_GIB} GiB to match your RAM)" \
-      10 50 "${SWAP_SIZE_GIB:-$RAM_GIB}") || die "Cancelled."
+      10 50 "$RAM_GIB") || die "Cancelled."
     if [[ ! "$SWAP_SIZE_GIB" =~ ^[0-9]+$ ]]; then
       dialog --msgbox "Enter a plain number, e.g. 16" 7 40
       continue
