@@ -262,7 +262,7 @@ GPU_CHOICE=$(dialog --stdout --menu \
   "hybrid-nvidia-intel" "Hybrid: Intel iGPU + Nvidia dGPU (Turing+)" \
   "hybrid-nvidia-amd"   "Hybrid: AMD iGPU + Nvidia dGPU (Turing+)" \
   "nvidia-legacy"       "Nvidia Legacy - (Maxwell GTX 9xx through Pascal GTX 10xx) - 580xx-dkms - installed via AUR helper" \
-  "none"                "Skip . install manually later") || die "Cancelled."
+  "none"                "Skip . install manually later.") || die "Cancelled."
 
 if [[ "$GPU_CHOICE" == nvidia* || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
   dialog --msgbox \
@@ -455,7 +455,7 @@ if [[ "$GPU_CHOICE" == "nvidia-legacy" ]]; then
   dialog --msgbox \
     "Nvidia Legacy notice:\n\nnvidia-580xx-dkms will be added to your AUR list.\nAfter first boot run ~/post-install.sh immediately.\n\nSystem will boot with nouveau (open source) driver\nuntil the proprietary driver is installed." \
     12 72
-  PKGS_AUR="$PKGS_AUR nvidia-580xx-dkms"
+  PKGS_AUR="$PKGS_AUR nvidia-580xx-dkms nvidia-580xx-utils nvidia-580xx-settings lib32-nvidia-580xx-utils"
 fi
 
 # ── AUR helper ────────────────────────────────────────────────────────────────
@@ -889,6 +889,35 @@ Target = nvidia-open-dkms
 
 [Action]
 Description = Rebuilding UKI for nvidia driver update...
+When = PostTransaction
+Exec = /usr/local/bin/dracut-install.sh
+EOF
+fi
+
+if [[ "$GPU_CHOICE" == "nvidia-legacy" ]]; then
+  cat > /etc/modprobe.d/nvidia.conf << 'EOF'
+options nvidia-drm modeset=1
+options nvidia NVreg_PreserveVideoMemoryAllocations=1
+EOF
+
+  # prepare dracut cmdline
+  sed -i 's/"$/ nvidia_drm.modeset=1 nvidia_drm.fbdev=1"/' /etc/dracut.conf.d/cmdline.conf
+
+  cat > /etc/dracut.conf.d/nvidia.conf << 'EOF'
+add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "
+EOF
+
+  # hook to rebuild UKI after AUR-install
+  cat > /etc/pacman.d/hooks/nvidia-legacy-dracut.hook << 'EOF'
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = nvidia-580xx-dkms
+
+[Action]
+Description = Rebuilding UKI for nvidia-legacy driver update...
 When = PostTransaction
 Exec = /usr/local/bin/dracut-install.sh
 EOF
@@ -1509,19 +1538,23 @@ EOF
   done
 fi
 
-#TODO add nvidia variables to hyprland
-# ── AUR setup ─────────────────────────────────────────────────────────────────
-if [[ -n "${PKGS_AUR:-}" ]] && [[ -n "${AUR_HELPER:-}" ]]; then
-  echo "${PKGS_AUR}" | tr ' ' '\n' | grep -v '^$' > /home/${USERNAME}/aur-packages.txt
-  chown ${USERNAME}:${USERNAME} /home/${USERNAME}/aur-packages.txt
+# ── Post Install Script and AUR setup ───────────────────────────────────────────────────────────
 
-  cat > /home/${USERNAME}/post-install.sh << EOF
+# --- base ---------------------------------------------------------------------------------------
+cat > /home/${USERNAME}/post-install.sh << EOF
 #!/usr/bin/env bash
 set -euo pipefail
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "\${CYAN}[INFO]\${NC} \$*"; }
 success() { echo -e "\${GREEN}[OK]\${NC}   \$*"; }
+EOF
 
+# --- AUR (optional) -----------------------------------------------------------------------------
+if [[ -n "${PKGS_AUR:-}" ]] && [[ -n "${AUR_HELPER:-}" ]]; then
+  echo "${PKGS_AUR}" | tr ' ' '\n' | grep -v '^$' > /home/${USERNAME}/aur-packages.txt
+  chown ${USERNAME}:${USERNAME} /home/${USERNAME}/aur-packages.txt
+
+  cat >> /home/${USERNAME}/post-install.sh << EOF
 info "Installing ${AUR_HELPER}..."
 cd /tmp
 git clone https://aur.archlinux.org/${AUR_HELPER}.git
@@ -1535,7 +1568,30 @@ if [[ -f "\$AUR_LIST" && -s "\$AUR_LIST" ]]; then
   info "Installing AUR packages: \${AUR_PKGS[*]}"
   ${AUR_HELPER} -S --noconfirm "\${AUR_PKGS[@]}"
 fi
+EOF
+fi
 
+# --- Nvidia (optional) ---------------------------------------------------------------------------
+if [[ "${GPU_CHOICE:-}" == nvidia* || "${GPU_CHOICE:-}" == hybrid-nvidia* ]]; then
+  cat >> /home/${USERNAME}/post-install.sh << 'EOF'
+info "Writing Hyprland nvidia env config..."
+mkdir -p "$HOME/.config/hypr"
+cat > "$HOME/.config/hypr/nvidia.conf" << 'HYPRCONF'
+env = LIBVA_DRIVER_NAME,nvidia
+env = __GLX_VENDOR_LIBRARY_NAME,nvidia
+env = NVD_BACKEND,direct
+env = WLR_NO_HARDWARE_CURSORS,1
+HYPRCONF
+echo ""
+echo "  Add the following to ~/.config/hypr/hyprland.conf:"
+echo "      source = ~/.config/hypr/nvidia.conf"
+EOF
+fi
+
+#TODO fetch dotfiles from repo, set up zsh with highlighting, fuzzyfind, basic rice, QOL features
+
+# --- add summary and set zsh as default ----------------------------------------------------------
+cat >> /home/${USERNAME}/post-install.sh << 'EOF'
 info "Setting zsh as default shell..."
 chsh -s /bin/zsh
 
@@ -1548,30 +1604,12 @@ echo "       sudo cp /path/*.nmconnection /etc/NetworkManager/system-connections
 echo "       sudo chmod 600 /etc/NetworkManager/system-connections/*"
 echo "       sudo systemctl restart NetworkManager"
 EOF
-  chown ${USERNAME}:${USERNAME} /home/${USERNAME}/post-install.sh
-  chmod +x /home/${USERNAME}/post-install.sh
-  success "post-install.sh written to /home/${USERNAME}/"
-else
-  # no AUR - but we still want zsh
-  cat > /home/${USERNAME}/post-install.sh << 'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
-info()    { echo -e "${CYAN}[INFO]${NC} $*"; }
-success() { echo -e "${GREEN}[OK]${NC}   $*"; }
 
-info "Setting zsh as default shell..."
-chsh -s /bin/zsh
+# --- ownership and make executable ----------------------------------------------------------------
+chown ${USERNAME}:${USERNAME} /home/${USERNAME}/post-install.sh
+chmod +x /home/${USERNAME}/post-install.sh
+success "post-install.sh written to /home/${USERNAME}/"
 
-success "Post-install complete!"
-echo ""
-echo "Next steps:"
-echo "  1. Restore dotfiles:   cd ~/dotfiles && stow *"
-EOF
-  chown ${USERNAME}:${USERNAME} /home/${USERNAME}/post-install.sh
-  chmod +x /home/${USERNAME}/post-install.sh
-  success "post-install.sh written to /home/${USERNAME}/"
-fi
 
 # ──── summary ─────────────────────────────────────────────────────────────────
 echo ""
@@ -1593,6 +1631,12 @@ if $ENABLE_SECUREBOOT; then
     echo "║    2. sbctl enroll-keys                                  ║"
   fi
   echo "║    3. Reboot, enable UEFI Secure Boot, set BIOS password ║"
+  echo "╠══════════════════════════════════════════════════════════╣"
+fi
+if $HAS_NVIDIA; then
+  echo "║    4. Add the following to ~/.config/hypr/hyprland.conf: ║"
+  echo "║    -->     source = ~/.config/hypr/nvidia.conf           ║"
+  echo "╠══════════════════════════════════════════════════════════╣"
 fi
 echo "║  Then log in as ${USERNAME} and run:                    ║"
 echo "║    bash ~/post-install.sh                                ║"
