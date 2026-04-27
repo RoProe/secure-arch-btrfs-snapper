@@ -572,7 +572,7 @@ mount -o "${BTRFS_OPTS},subvol=@snapshots" "$LUKS_DEV" /mnt/.snapshots
 mount -o "${BTRFS_OPTS},subvol=@var_log"   "$LUKS_DEV" /mnt/var/log
 if $ENABLE_SWAP; then
   mkdir -p /mnt/swap
-  mount -o "noatime,nodatacow,nodatasum,compress=0,subvol=@swap" "$LUKS_DEV" /mnt/swap
+  mount -o "noatime,nodatacow,nodatasum,compress=no,subvol=@swap" "$LUKS_DEV" /mnt/swap
 fi
 mount "$EFI_PART" /mnt/boot/efi
 success "Mounted."
