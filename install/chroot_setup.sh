@@ -374,7 +374,6 @@ if [[ -n "${WEBAPPS}" ]]; then
     [[ -z "${WEBAPP_URLS[$app]:-}" ]] && continue
     PROFILE_DIR="/home/${USERNAME}/.mozilla/firefox/webapps/${app}"
     mkdir -p "$PROFILE_DIR"
-    mkdir -p "$PROFILE_DIR"
     tee "${DESKTOP_DIR}/${app}-webapp.desktop" > /dev/null << EOF
 [Desktop Entry]
 Name=${WEBAPP_NAMES[$app]}
@@ -491,7 +490,7 @@ if [[ "$GPU_CHOICE" == nvidia* || "$GPU_CHOICE" == hybrid-nvidia* ]]; then
   echo "║    -->     source = ~/.config/hypr/nvidia.conf           ║"
   echo "╠══════════════════════════════════════════════════════════╣"
 fi
-echo "║  Then log in as ${USERNAME} and run:                    ║"
+echo "║  Then log in as ${USERNAME} and run:                     ║"
 echo "║    bash ~/post-install.sh                                ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
