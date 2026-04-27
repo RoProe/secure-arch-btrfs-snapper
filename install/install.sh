@@ -648,7 +648,7 @@ success "Locale/keymap + dracut i18n prepared."
 
 # ── pacstrap part 2 (Kernel)────────────────────────────────────────────────────
 
-info "Running pacstrap (base system)..."
+info "Running pacstrap (kernel)..."
 # systemd-boot is part of systemd — already in base, bootctl is the installer tool
 if $ENABLE_LTS; then
   pacstrap /mnt linux linux-lts
@@ -725,6 +725,7 @@ arch-chroot /mnt env \
 
 echo ""
 success "All done!"
+rm -f /mnt/root/chroot_setup.sh
 echo ""
 echo "  umount -R /mnt"
 echo "  cryptsetup close ${LUKS_NAME}"

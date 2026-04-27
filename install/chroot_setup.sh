@@ -61,12 +61,12 @@ read -ra PKG_ARRAY <<< "$ALL_PKGS"
 pacman -S --noconfirm --needed "${PKG_ARRAY[@]}"
 
 # ── activate services ────────────────────────────────────────────
-systemctl enable --no-reload bluetooth                     || warn "bluetooth nicht verfügbar (nicht installiert?)"
-systemctl enable --no-reload ufw                           || warn "ufw nicht verfügbar (nicht installiert?)"
-systemctl enable --no-reload power-profiles-daemon         || warn "power-profiles-daemon nicht verfügbar"
-systemctl enable --no-reload syncthing@${USERNAME}.service || warn "syncthing nicht verfügbar (nicht installiert?)"
-systemctl enable --no-reload NetworkManager                || die "NetworkManager konnte nicht aktiviert werden"
-systemctl enable --no-reload fstrim.timer                  || die "fstrim.timer konnte nicht aktiviert werden"
+systemctl enable --no-reload bluetooth                     || warn "bluetooth not available"
+systemctl enable --no-reload ufw                           || warn "ufw not available"
+systemctl enable --no-reload power-profiles-daemon         || warn "power-profiles-daemon not available"
+systemctl enable --no-reload syncthing@${USERNAME}.service || warn "syncthing not available"
+systemctl enable --no-reload NetworkManager                || die "NetworkManager can't be activate"
+systemctl enable --no-reload fstrim.timer                  || die "fstrim.timer can't be activated"
 
 
 # ── hibernate config (suspend-to-disk via swapfile) ───────────────────────────
