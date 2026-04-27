@@ -146,7 +146,7 @@ done
 
 # ── EFI size ──────────────────────────────────────────────────────────────────
 while true; do
-  EFI_SIZE=$(dialog --stdout --inputbox "EFI partition size" 8 50 "${EFI_SIZE:-2048MiB}") || die "Cancelled."
+  EFI_SIZE=$(dialog --stdout --inputbox "EFI partition size. 2048MiB recommended if using multiple kernels." 8 50 "${EFI_SIZE:-2048MiB}") || die "Cancelled."
   if [[ ! "$EFI_SIZE" =~ ^[0-9]+(MiB|GiB)$ ]]; then
     dialog --msgbox "Invalid format.\n\nUse e.g. 512MiB or 1GiB." 8 45
     continue
@@ -162,14 +162,14 @@ done
 
 # ── Fallback Kernel ───────────────────────────────────────────────────────────
 ENABLE_LTS=false
-if dialog --yesno "Install LTS Fallback-Kernel?\n\n usefull if main kernel breaks \n +320MB EFI-Size \n recommended \n select it in BIOS menu" 10 58; then
+if dialog --yesno "Install LTS Fallback-Kernel?\n\n usefull if main kernel breaks" 10 58; then
     ENABLE_LTS=true
 fi
 
 # ── swap / hibernate ──────────────────────────────────────────────────────────
 ENABLE_SWAP=false
 SWAP_SIZE_GIB=0
-RAM_GIB=$(free -g | awk '/^Mem:/{print $2}')
+RAM_GIB=$(( ($(awk '/MemTotal/ {print $2}' /proc/meminfo) + 1024*1024 - 1) / (1024*1024) ))
 
 if dialog --yesno \
   "Enable swap + hibernate?\n\nDetected RAM: ${RAM_GIB} GiB\nRecommended swap: ${RAM_GIB} GiB\n\nThe swapfile lives inside LUKS (fully encrypted).\nHibernate state is read after LUKS unlock at boot.\nsystemd will hibernate instead of suspend-to-RAM." \
