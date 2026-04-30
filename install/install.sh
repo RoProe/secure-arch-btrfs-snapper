@@ -365,13 +365,13 @@ PKGS_FILES=$(dialog --stdout --checklist "File management" 22 72 16 \
 
 PKGS_EDITOR=$(dialog --stdout --checklist "Editors and Dev tools" 22 72 10 \
   "neovim"         "Modern vim"                   ON  \
-  "vim"            "Vi editor (fallback)"         ON \
+  "vim"            "Vi editor (fallback)"         ON  \
   "git"            "Version control"              ON  \
   "stow"           "Dotfile manager"              ON  \
-  "bat"            "nicer cat"                   ON  \
+  "bat"            "nicer cat"                    ON  \
   "eza"            "Better ls"                    ON  \
   "tree"           "Directory tree"               ON  \
-  "bind"           "DNS utils"              ON  \
+  "bind"           "DNS utils"                    ON  \
   "net-tools"      "Network tools (ifconfig etc)" ON  \
   "tldr"           "Simplified man pages"         ON  \
   "tmux"	   "Terminal Multiplexer"	  ON  ) || true
@@ -385,10 +385,10 @@ PKGS_APPS=$(dialog --stdout --checklist "Applications" 22 72 16 \
   "signal-desktop"           "Encrypted messenger"                          OFF \
   "obsidian"                 "Markdown notes"                               OFF \
   "anki"                     "Flashcard app"                                OFF \
-  "libreoffice-fresh"        "Office suite"                                 OFF \
+  "libreoffice-fresh"        "Office suite"                                 ON \
   "obs-studio"               "Screen recording / streaming"                 OFF \
   "rpi-imager"               "Raspberry Pi Imager"                          OFF \
-  "btop"                     "Resource monitor"                             OFF \
+  "btop"                     "Resource monitor"                             ON \
   "texlive-basic"            "LaTeX base"                                   OFF \
   "texlive-latexrecommended" "LaTeX recommended packages"                   OFF \
   "texlive-fontsrecommended" "LaTeX recommended fonts"                      OFF \
@@ -410,7 +410,7 @@ PKGS_SYSTEM=$(dialog --stdout --checklist "System and Security" 22 72 17 \
   "syncthing"                  "File sync"                             ON \
   "rsync"                      "File sync / backup tool"               ON \
   "borg"                       "Deduplicating backup"                  ON \
-  "yubikey-manager"            "YubiKey management"                    ON \
+  "yubikey-manager"            "YubiKey management"                    OFF \
   "network-manager-applet"     "NM tray applet (pulls networkmanager)" ON \
   "networkmanager-openconnect" "OpenConnect VPN (pulls openconnect)"   ON \
   "wireguard-tools"            "WireGuard tools"                       ON \
@@ -421,7 +421,7 @@ PKGS_SYSTEM=$(dialog --stdout --checklist "System and Security" 22 72 17 \
   "bolt"                       "Thunderbolt device manager"            "$TB_DEFAULT") || true
 
 PKGS_NETWORK=$(dialog --stdout --checklist "Networking tools" 22 72 8 \
-  "nmap"            "Port scanner (pulls ncat)"         ON \
+  "nmap"            "Port scanner (pulls ncat)"          ON \
   "mtr"             "Traceroute + ping combined"         ON \
   "whois"           "Domain lookup"                      ON \
   "tcpdump"         "Packet analyzer"                    ON \
@@ -449,6 +449,16 @@ PKGS_AUR=$(dialog --stdout --checklist \
   "typora"              "Markdown editor"                ON  \
   "mullvad-vpn-bin"     "Mullvad VPN client"             OFF  \
   "yay-debug"           "yay debug symbols"              OFF) || true
+
+
+# ── configure with predefined dotfiles? ───────────────────────────────────────
+CONFIGURE_DOTFILES=false
+if dialog --yesno \
+  "Configure dotfiles for ${USERNAME}? Sets up specific dotfiles in ~/dotfiles with git and stow for a predefined setup" \
+  12 58; then
+  CONFIGURE_DOTFILES=true
+fi
+// TODO
 
 # ── nvidia legacy — if choosen add to AUR ─────────────────────────────────────
 if [[ "$GPU_CHOICE" == "nvidia-legacy" ]]; then
