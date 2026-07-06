@@ -1,6 +1,6 @@
 # arch-install
 ## DISCLAIMER
-This project is a work in progress and under active development.
+This project is a work in progress - it's a hobby project to further my knowledge of Linux system administration and secure system configuration.
 It has not been extensively tested yet.
 Use at your own risk and test in a VM before deploying on real hardware.
 Personal Arch Linux installation setup - LUKS2 full-disk encryption, Btrfs with automatic snapshots, post-LUKS snapshot menu, hibernate via encrypted swapfile, systemd-boot + Unified Kernel Image, optional SecureBoot.
